@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SIGEM Obras — Beta</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" defer></script>
+  <script src="config.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header><div><strong>SIGEM <span>Obras</span></strong><small>v1.0 Beta • Ambiente de testes</small></div><span class="pill">Acesso restrito</span></header>
+  <main>
+    <section id="setup" class="panel hidden"><h1>Configuração pendente</h1><p>Preencha a URL do projeto e a chave publicável no arquivo <code>config.js</code>. Nunca use uma chave secreta.</p></section>
+    <section id="login" class="panel hidden"><h1>Entrar no SIGEM Obras</h1><p>Use o usuário administrador cadastrado no Supabase.</p><form id="login-form"><label>E-mail<input id="email" type="email" required autocomplete="username" /></label><label>Senha<input id="password" type="password" required autocomplete="current-password" /></label><button id="login-btn" type="submit">Entrar</button></form></section>
+    <section id="dashboard" class="hidden"><div class="heading"><div><h1>Painel de obras</h1><p>Gerencie as obras cadastradas no ambiente de testes.</p></div><button id="logout" class="secondary">Sair</button></div><div class="panel"><div class="heading"><h2>Obras cadastradas</h2><button id="new-btn">Nova obra</button></div><p id="empty" class="muted hidden">Nenhuma obra cadastrada.</p><div id="works" class="works"></div></div><section id="editor" class="panel hidden"><h2 id="form-title">Nova obra</h2><form id="work-form"><input id="work-id" type="hidden" /><div class="form-grid"><label>Código *<input id="codigo" required maxlength="100" /></label><label>Nome da obra *<input id="nome" required /></label><label>Órgão<input id="orgao" /></label><label>Município<input id="municipio" /></label><label>UF<input id="uf" maxlength="2" placeholder="SP" /></label><label>Situação<select id="status"><option value="planejamento">Planejamento</option><option value="em_execucao">Em execução</option><option value="paralisada">Paralisada</option><option value="concluida">Concluída</option><option value="arquivada">Arquivada</option></select></label></div><label>Endereço<input id="endereco" /></label><label>Descrição<textarea id="descricao" rows="3"></textarea></label><div class="actions"><button type="submit" id="save-btn">Salvar obra</button><button type="button" id="cancel-btn" class="secondary">Cancelar</button></div></form></section></section>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+  <footer>SIGEM Obras • Versão beta • Não inserir dados municipais reais sem autorização institucional.</footer>
+</body>
+</html>
