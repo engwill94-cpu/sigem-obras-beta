@@ -2,7 +2,7 @@
 const docsBucket='documentos-obras';
 const docsCategories={contrato:'Contrato',termo_referencia:'Termo de Referência',aditamento:'Termo de Aditamento',pgt:'PGT',outro:'Outro'};
 let docsRecords=[],docsSelected=null,docsUrl=null,docsZoom=100,docsRequest=0;
-function docsMessage(message){$('docs-upload-status').textContent=message;}
+function docsMessage(message,isDuplicate=false){const status=$('docs-upload-status');status.textContent=message;status.classList.toggle('docs-duplicate-warning',isDuplicate);}
 function docsClearPreview(){docsSelected=null;$('docs-view-frame').removeAttribute('src');if(docsUrl)URL.revokeObjectURL(docsUrl);docsUrl=null;$('docs-view-container').classList.add('hidden');$('docs-view-empty').classList.remove('hidden');$('docs-view-empty').textContent='Selecione um documento na lista para visualizar.';$('docs-view-name').textContent='Nenhum documento selecionado';}
 async function loadDocuments(){
  if(!selectedWork||!db)return;
@@ -54,21 +54,6 @@ async function deleteDocument(d){
  if(error){docsMessage('Arquivo removido, mas registro não excluído: '+error.message);return;}
  if(docsSelected?.id===d.id)docsClearPreview();docsMessage('Documento excluído.');await loadDocuments();
 }
-function docsDuplicatePopup(fileName){
- return new Promise(resolve=>{
-  const overlay=document.createElement('div');
-  overlay.className='docs-duplicate-overlay';
-  overlay.innerHTML='<div class="docs-duplicate-dialog" role="alertdialog" aria-modal="true" aria-labelledby="docs-duplicate-title" aria-describedby="docs-duplicate-description"><h3 id="docs-duplicate-title">Documento já cadastrado</h3><p id="docs-duplicate-description"></p><button type="button" class="docs-duplicate-ok">OK</button></div>';
-  overlay.querySelector('#docs-duplicate-description').textContent='O documento "'+fileName+'" já está cadastrado nesta obra e disponível para consulta. Nenhum novo arquivo foi enviado.';
-  const button=overlay.querySelector('button');
-  const close=()=>{document.removeEventListener('keydown',onKey);overlay.remove();resolve();};
-  const onKey=e=>{if(e.key==='Escape'){e.preventDefault();close();}};
-  button.addEventListener('click',close,{once:true});
-  document.addEventListener('keydown',onKey);
-  document.body.appendChild(overlay);
-  button.focus();
- });
-}
 async function docsFileSha256(file){
  if(!globalThis.crypto?.subtle)throw new Error('Este navegador não oferece verificação criptográfica segura.');
  const bytes=await file.arrayBuffer();
@@ -94,7 +79,7 @@ $('docs-send').addEventListener('click',async()=>{
  const files=Array.from($('docs-file').files);
  if(!files.length){docsMessage('Selecione um ou mais arquivos.');return;}
  const obraId=selectedWork.id,category=$('docs-category').value;
- let count=0,failed=0;
+ let count=0,failed=0,duplicateNotice='';
  button.disabled=true;
  button.textContent='Enviando...';
  try {
@@ -110,8 +95,8 @@ $('docs-send').addEventListener('click',async()=>{
     const duplicate=await docsFindDuplicate(obraId,hash);
     if(duplicate){
      failed++;
-     docsMessage('Documento duplicado: envio bloqueado.');
-     await docsDuplicatePopup(duplicate.nome_arquivo||duplicate.titulo||file.name);
+     duplicateNotice='Documento já cadastrado nesta obra: '+(duplicate.nome_arquivo||duplicate.titulo||file.name)+'. Disponível para consulta; nenhum novo arquivo foi enviado. ⚠️⚠️⚠️';
+     docsMessage(duplicateNotice,true);
      continue;
     }
    }catch(error){
@@ -150,6 +135,7 @@ $('docs-send').addEventListener('click',async()=>{
   if(selectedWork?.id===obraId) {
    try{await docsWithTimeout(()=>loadDocuments(),15000);}catch(error){docsMessage('Envio encerrado, mas a lista demorou a atualizar. Atualize a página.');}
   }
+  if(duplicateNotice)docsMessage(duplicateNotice,true);
  }
 });
 $('docs-search').addEventListener('input',renderDocuments);$('docs-filter').addEventListener('change',renderDocuments);
