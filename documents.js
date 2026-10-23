@@ -3,7 +3,7 @@ const docsBucket='documentos-obras';
 const docsCategories={contrato:'Contrato',termo_referencia:'Termo de Referência',aditamento:'Termo de Aditamento',pgt:'PGT',outro:'Outro'};
 let docsRecords=[],docsSelected=null,docsUrl=null,docsZoom=100,docsRequest=0,docsPdf=null,docsPreviewToken=0;
 function docsMessage(message,isDuplicate=false){const status=$('docs-upload-status');status.textContent=message;status.classList.toggle('docs-duplicate-warning',isDuplicate);status.style.cssText=isDuplicate?'display:block!important;box-sizing:border-box!important;width:100%!important;padding:12px 14px!important;border:2px solid #dc2626!important;border-radius:6px!important;background:#fff5f5!important;color:#b91c1c!important;font-weight:600!important;line-height:1.55!important;overflow-wrap:anywhere!important;':' ';}
-function docsClearPreview(){}
+function docsClearPreview(){docsSelected=null;const frame=$('docs-view-frame');if(frame)frame.removeAttribute('src');const container=$('docs-view-container');if(container)container.classList.add('hidden');const empty=$('docs-view-empty');if(empty){empty.classList.remove('hidden');empty.textContent='Selecione um documento na lista para visualizar.';}const title=$('docs-view-name');if(title)title.textContent='Nenhum documento selecionado';}
 async function loadDocuments(){
  if(!selectedWork||!db)return;
  const id=selectedWork.id,request=++docsRequest;
@@ -24,7 +24,7 @@ function renderDocuments(){
   const name=document.createElement('strong');name.textContent=d.nome_arquivo||d.titulo;
   const meta=document.createElement('small');meta.textContent=(docsCategories[d.categoria]||d.categoria)+' · '+new Date(d.created_at).toLocaleDateString('pt-BR');
   info.append(name,meta);row.append(info);
-  for(const [symbol,title,action,cls] of [['◉','Visualizar',()=>openDocumentNewWindow(d),''],['↓','Baixar',()=>downloadDocument(d),''],['✕','Excluir',()=>deleteDocument(d),'docs-danger']]){
+  for(const [symbol,title,action,cls] of [['◉','Visualizar',()=>previewDocument(d),''],['↓','Baixar',()=>downloadDocument(d),''],['✕','Excluir',()=>deleteDocument(d),'docs-danger']]){
    const button=document.createElement('button');button.type='button';button.className='docs-action '+cls;button.textContent=symbol;button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',action);row.append(button);
   }root.append(row);
  }
@@ -33,6 +33,28 @@ async function docsGetBlob(d){
  if(!d.identificador_externo)throw Error('Arquivo sem referência no armazenamento.');
  const {data,error}=await db.storage.from(docsBucket).download(d.identificador_externo);
  if(error)throw error;return data;
+}
+async function previewDocument(d){
+ docsClearPreview();
+ docsSelected=d;
+ $('docs-view-name').textContent=d.nome_arquivo||d.titulo;
+ const empty=$('docs-view-empty');
+ empty.textContent='Carregando documento...';
+ if(!(/\\.pdf$/i.test(d.nome_arquivo||'')||d.mime_type==='application/pdf')){
+  empty.textContent='A visualização integrada está disponível para PDF. Para Word, utilize o download.';
+  return;
+ }
+ try{
+  const {data,error}=await db.storage.from(docsBucket).createSignedUrl(d.identificador_externo,3600);
+  if(error)throw error;
+  if(!data?.signedUrl)throw Error('Não foi possível gerar o link de leitura.');
+  if(docsSelected?.id!==d.id)return;
+  $('docs-view-frame').src=data.signedUrl+'#toolbar=0&navpanes=0&view=FitH';
+  $('docs-view-container').classList.remove('hidden');
+  empty.classList.add('hidden');
+ }catch(error){
+  if(docsSelected?.id===d.id)empty.textContent='Erro ao abrir: '+(error.message||String(error));
+ }
 }
 async function openDocumentNewWindow(d){
  const w=window.open('','_blank');
@@ -147,3 +169,6 @@ $('docs-send').addEventListener('click',async()=>{
  }
 });
 $('docs-search').addEventListener('input',renderDocuments);$('docs-filter').addEventListener('change',renderDocuments);
+
+$('docs-maximize').addEventListener('click',()=>{if(docsSelected)openDocumentNewWindow(docsSelected);});
+$('docs-download').addEventListener('click',()=>{if(docsSelected)downloadDocument(docsSelected);});
