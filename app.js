@@ -385,6 +385,7 @@ function enterWork(w) {
 }
 
 function backToOverview() {
+  if (typeof docsClearPreview === 'function') docsClearPreview();
   document.body.classList.remove('inside-mode');
 
   ++workRequest;
@@ -466,12 +467,13 @@ function switchWorkTab(tab) {
     );
   });
 
-  for (const id of ['overview', 'contracts', 'coming']) {
+  for (const id of ['overview', 'contracts', 'documents', 'coming']) {
     $('work-tab-' + id).classList.add('hidden');
   }
 
-  if (tab === 'overview' || tab === 'contracts') {
+  if (tab === 'overview' || tab === 'contracts' || tab === 'documents') {
     $('work-tab-' + tab).classList.remove('hidden');
+    if (tab === 'documents') loadDocuments();
   } else {
     $('work-tab-coming').classList.remove('hidden');
 
