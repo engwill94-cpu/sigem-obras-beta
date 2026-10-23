@@ -123,7 +123,7 @@ $('docs-send').addEventListener('click',async()=>{
  if(!selectedWork||!currentUser){docsMessage('Selecione uma obra e entre novamente no sistema.');return;}
  const files=Array.from($('docs-file').files);
  if(!files.length){docsMessage('Selecione um ou mais arquivos.');return;}
- const obraId=selectedWork.id,category=$('docs-category').value,section=docsSection;
+ const obraId=selectedWork.id,category='outro',section=docsSection;
  let count=0,failed=0,duplicateNotice='';
  button.disabled=true;
  button.textContent='Enviando...';
