@@ -54,6 +54,21 @@ async function deleteDocument(d){
  if(error){docsMessage('Arquivo removido, mas registro não excluído: '+error.message);return;}
  if(docsSelected?.id===d.id)docsClearPreview();docsMessage('Documento excluído.');await loadDocuments();
 }
+function docsDuplicatePopup(fileName){
+ return new Promise(resolve=>{
+  const overlay=document.createElement('div');
+  overlay.className='docs-duplicate-overlay';
+  overlay.innerHTML='<div class="docs-duplicate-dialog" role="alertdialog" aria-modal="true" aria-labelledby="docs-duplicate-title" aria-describedby="docs-duplicate-description"><h3 id="docs-duplicate-title">Documento já cadastrado</h3><p id="docs-duplicate-description"></p><button type="button" class="docs-duplicate-ok">OK</button></div>';
+  overlay.querySelector('#docs-duplicate-description').textContent='O documento "'+fileName+'" já está cadastrado nesta obra e disponível para consulta. Nenhum novo arquivo foi enviado.';
+  const button=overlay.querySelector('button');
+  const close=()=>{document.removeEventListener('keydown',onKey);overlay.remove();resolve();};
+  const onKey=e=>{if(e.key==='Escape'){e.preventDefault();close();}};
+  button.addEventListener('click',close,{once:true});
+  document.addEventListener('keydown',onKey);
+  document.body.appendChild(overlay);
+  button.focus();
+ });
+}
 async function docsFileSha256(file){
  if(!globalThis.crypto?.subtle)throw new Error('Este navegador não oferece verificação criptográfica segura.');
  const bytes=await file.arrayBuffer();
@@ -95,7 +110,8 @@ $('docs-send').addEventListener('click',async()=>{
     const duplicate=await docsFindDuplicate(obraId,hash);
     if(duplicate){
      failed++;
-     docsMessage('Documento já cadastrado nesta obra: '+(duplicate.nome_arquivo||duplicate.titulo)+'. Disponível para consulta; nenhum novo arquivo foi enviado.');
+     docsMessage('Documento duplicado: envio bloqueado.');
+     await docsDuplicatePopup(duplicate.nome_arquivo||duplicate.titulo||file.name);
      continue;
     }
    }catch(error){
