@@ -54,22 +54,60 @@ async function deleteDocument(d){
  if(error){docsMessage('Arquivo removido, mas registro não excluído: '+error.message);return;}
  if(docsSelected?.id===d.id)docsClearPreview();docsMessage('Documento excluído.');await loadDocuments();
 }
+const DOCS_TIMEOUT_MS = 30000;
+function docsWithTimeout(task, ms = DOCS_TIMEOUT_MS) {
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('Tempo limite de 30 segundos excedido. Verifique sua conexão e tente novamente.')),ms);
+  Promise.resolve().then(task).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+ });
+}
 $('docs-send').addEventListener('click',async()=>{
- if(!selectedWork||!currentUser)return;
- const files=Array.from($('docs-file').files);if(!files.length){docsMessage('Selecione arquivos.');return;}
- const obraId=selectedWork.id,category=$('docs-category').value,button=$('docs-send');button.disabled=true;let count=0;
- for(const file of files){
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(!['pdf','doc','docx'].includes(ext)||file.size>50*1024*1024){docsMessage('Arquivo inválido ou maior que 50 MB: '+file.name);continue;}
-  const path=obraId+'/'+crypto.randomUUID()+'/'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-  docsMessage('Enviando '+file.name+'...');
-  const mime=ext==='pdf'?'application/pdf':ext==='doc'?'application/msword':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  const {error:uploadError}=await db.storage.from(docsBucket).upload(path,file,{contentType:mime,upsert:false});
-  if(uploadError){docsMessage('Falha no upload: '+uploadError.message);continue;}
-  const {error}=await db.from('documentos').insert({obra_id:obraId,categoria,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,uploaded_by:currentUser.id});
-  if(error){await db.storage.from(docsBucket).remove([path]);docsMessage('Falha no registro: '+error.message);continue;}count++;
+ const button=$('docs-send');
+ if(button.disabled)return;
+ if(!selectedWork||!currentUser){docsMessage('Selecione uma obra e entre novamente no sistema.');return;}
+ const files=Array.from($('docs-file').files);
+ if(!files.length){docsMessage('Selecione um ou mais arquivos.');return;}
+ const obraId=selectedWork.id,category=$('docs-category').value;
+ let count=0,failed=0;
+ button.disabled=true;
+ button.textContent='Enviando...';
+ try {
+  for(let i=0;i<files.length;i++){
+   const file=files[i],ext=file.name.split('.').pop().toLowerCase();
+   if(!['pdf','doc','docx'].includes(ext)||file.size>50*1024*1024||file.size===0){
+    failed++;docsMessage('Arquivo inválido, vazio ou maior que 50 MB: '+file.name);continue;
+   }
+   const path=obraId+'/'+crypto.randomUUID()+'/'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+   const mime=ext==='pdf'?'application/pdf':ext==='doc'?'application/msword':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+   docsMessage('Enviando '+(i+1)+' de '+files.length+': '+file.name+' ('+(file.size/1048576).toFixed(1)+' MB)...');
+   try{
+    const {error:uploadError}=await docsWithTimeout(()=>db.storage.from(docsBucket).upload(path,file,{contentType:mime,upsert:false}));
+    if(uploadError)throw uploadError;
+    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,categoria,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,uploaded_by:currentUser.id}));
+    if(insertError){
+     db.storage.from(docsBucket).remove([path]).then(()=>{},()=>{});
+     throw insertError;
+    }
+    count++;
+    docsMessage('Enviado: '+file.name+' ('+count+' concluído(s)).');
+   }catch(error){
+    failed++;
+    docsMessage('Falha em '+file.name+': '+(error.message||String(error)));
+   }
+  }
+ }catch(error){
+  docsMessage('Erro inesperado: '+(error.message||String(error)));
+ }finally{
+  button.disabled=false;
+  button.textContent='↑ Enviar arquivos';
+  if(count) {
+   $('docs-file').value='';
+   docsMessage(count+' documento(s) enviado(s).'+(failed?' '+failed+' com falha.':''));
+  }
+  if(selectedWork?.id===obraId) {
+   try{await docsWithTimeout(()=>loadDocuments(),15000);}catch(error){docsMessage('Envio encerrado, mas a lista demorou a atualizar. Atualize a página.');}
+  }
  }
- button.disabled=false;$('docs-file').value='';if(count)docsMessage(count+' documento(s) enviado(s).');if(selectedWork?.id===obraId)await loadDocuments();
 });
 $('docs-search').addEventListener('input',renderDocuments);$('docs-filter').addEventListener('change',renderDocuments);
 $('docs-download').addEventListener('click',()=>{if(docsSelected)downloadDocument(docsSelected);});
