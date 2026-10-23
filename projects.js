@@ -56,7 +56,7 @@
   if(!list.children.length)list.append(make('p','sp-library-footnote',records.length?'Nenhum projeto corresponde à pesquisa.':'Nenhum projeto cadastrado nesta obra.'));
  }
  async function load(){
-  if(!window.db||!window.selectedWork)return;
+  if(!db||!selectedWork)return;
   const obra=selectedWork.id,seq=++request;
   loadedWork=obra;el('sp-discipline-list').textContent='Carregando projetos...';
   const {data,error}=await db.from('projetos_spobras').select('id,obra_id,codigo_folha,fase,disciplina,folha,revisao,formato,nome_arquivo,storage_path,checksum_sha256,created_at').eq('obra_id',obra).order('created_at',{ascending:false});
