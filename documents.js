@@ -2,13 +2,28 @@
 const docsBucket='documentos-obras';
 const docsCategories={contrato:'Contrato',termo_referencia:'Termo de Referência',aditamento:'Termo de Aditamento',pgt:'PGT',outro:'Outro'};
 let docsRecords=[],docsSelected=null,docsUrl=null,docsZoom=100,docsRequest=0,docsPdf=null,docsPreviewToken=0;
+let docsSection='contratual';
+const docsSectionNames={licitacao:'Licitação',contratual:'Contratual',ambiental:'Ambiental',licencas_alvaras:'Licenças e alvarás'};
+function docsSelectSection(section){
+ if(!docsSectionNames[section])return;
+ docsSection=section;
+ $('docs-section-title').textContent='Documentos — '+docsSectionNames[section];
+ $('docs-section-description').textContent='Envie, visualize e gerencie os arquivos da seção '+docsSectionNames[section]+'.';
+ $('docs-file').value='';
+ $('docs-search').value='';
+ $('docs-filter').value='';
+ docsMessage('Até 50 MB por arquivo. O arquivo original será preservado.');
+ docsClearPreview();
+ loadDocuments();
+}
+
 function docsMessage(message,isDuplicate=false){const status=$('docs-upload-status');status.textContent=message;status.classList.toggle('docs-duplicate-warning',isDuplicate);status.style.cssText=isDuplicate?'display:block!important;box-sizing:border-box!important;width:100%!important;padding:12px 14px!important;border:2px solid #dc2626!important;border-radius:6px!important;background:#fff5f5!important;color:#b91c1c!important;font-weight:600!important;line-height:1.55!important;overflow-wrap:anywhere!important;':' ';}
 function docsClearPreview(){docsSelected=null;const frame=$('docs-view-frame');if(frame)frame.removeAttribute('src');const container=$('docs-view-container');if(container)container.classList.add('hidden');const empty=$('docs-view-empty');if(empty){empty.classList.remove('hidden');empty.textContent='Selecione um documento na lista para visualizar.';}const title=$('docs-view-name');if(title)title.textContent='Nenhum documento selecionado';}
 async function loadDocuments(){
  if(!selectedWork||!db)return;
  const id=selectedWork.id,request=++docsRequest;
  $('docs-rows').textContent='Carregando documentos...';
- const {data,error}=await db.from('documentos').select('id,obra_id,categoria,nome_arquivo,titulo,identificador_externo,mime_type,created_at').eq('obra_id',id).eq('provedor','supabase_storage').order('created_at',{ascending:false});
+ const {data,error}=await db.from('documentos').select('id,obra_id,categoria,nome_arquivo,titulo,identificador_externo,mime_type,created_at').eq('obra_id',id).eq('secao_documental',docsSection).eq('provedor','supabase_storage').order('created_at',{ascending:false});
  if(request!==docsRequest||selectedWork?.id!==id)return;
  if(error){$('docs-rows').textContent='Erro ao consultar documentos: '+error.message;return;}
  docsRecords=data||[];renderDocuments();
@@ -108,7 +123,7 @@ $('docs-send').addEventListener('click',async()=>{
  if(!selectedWork||!currentUser){docsMessage('Selecione uma obra e entre novamente no sistema.');return;}
  const files=Array.from($('docs-file').files);
  if(!files.length){docsMessage('Selecione um ou mais arquivos.');return;}
- const obraId=selectedWork.id,category=$('docs-category').value;
+ const obraId=selectedWork.id,category=$('docs-category').value,section=docsSection;
  let count=0,failed=0,duplicateNotice='';
  button.disabled=true;
  button.textContent='Enviando...';
@@ -140,7 +155,7 @@ $('docs-send').addEventListener('click',async()=>{
    try{
     const {error:uploadError}=await docsWithTimeout(()=>db.storage.from(docsBucket).upload(path,file,{contentType:mime,upsert:false}));
     if(uploadError)throw uploadError;
-    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,categoria:category,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,checksum_sha256:hash,uploaded_by:currentUser.id}));
+    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,secao_documental:section,categoria:category,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,checksum_sha256:hash,uploaded_by:currentUser.id}));
     if(insertError){
      db.storage.from(docsBucket).remove([path]).then(()=>{},()=>{});
      if(insertError.code==='23505')throw new Error('Documento já cadastrado nesta obra. O arquivo está disponível para consulta.');
@@ -162,7 +177,7 @@ $('docs-send').addEventListener('click',async()=>{
    $('docs-file').value='';
    docsMessage(count+' documento(s) enviado(s).'+(failed?' '+failed+' não enviado(s); consulte as mensagens de verificação.':''));
   }
-  if(selectedWork?.id===obraId) {
+  if(selectedWork?.id===obraId&&docsSection===section) {
    try{await docsWithTimeout(()=>loadDocuments(),15000);}catch(error){docsMessage('Envio encerrado, mas a lista demorou a atualizar. Atualize a página.');}
   }
   if(duplicateNotice)docsMessage(duplicateNotice,true);
