@@ -3,7 +3,7 @@ const docsBucket='documentos-obras';
 const docsCategories={contrato:'Contrato',termo_referencia:'Termo de Referência',aditamento:'Termo de Aditamento',pgt:'PGT',outro:'Outro'};
 let docsRecords=[],docsSelected=null,docsUrl=null,docsZoom=100,docsRequest=0;
 function docsMessage(message,isDuplicate=false){const status=$('docs-upload-status');status.textContent=message;status.classList.toggle('docs-duplicate-warning',isDuplicate);status.style.cssText=isDuplicate?'display:block!important;box-sizing:border-box!important;width:100%!important;padding:12px 14px!important;border:2px solid #dc2626!important;border-radius:6px!important;background:#fff5f5!important;color:#b91c1c!important;font-weight:600!important;line-height:1.55!important;overflow-wrap:anywhere!important;':' ';}
-function docsClearPreview(){docsSelected=null;$('docs-view-frame').removeAttribute('src');if(docsUrl)URL.revokeObjectURL(docsUrl);docsUrl=null;$('docs-view-container').classList.add('hidden');$('docs-view-empty').classList.remove('hidden');$('docs-view-empty').textContent='Selecione um documento na lista para visualizar.';$('docs-view-name').textContent='Nenhum documento selecionado';}
+function docsClearPreview(){docsSelected=null;$('docs-view-frame').removeAttribute('src');if(docsUrl&&docsUrl.startsWith('blob:'))URL.revokeObjectURL(docsUrl);docsUrl=null;$('docs-view-container').classList.add('hidden');$('docs-view-empty').classList.remove('hidden');$('docs-view-empty').textContent='Selecione um documento na lista para visualizar.';$('docs-view-name').textContent='Nenhum documento selecionado';}
 async function loadDocuments(){
  if(!selectedWork||!db)return;
  const id=selectedWork.id,request=++docsRequest;
@@ -38,7 +38,7 @@ async function previewDocument(d){
  docsClearPreview();docsSelected=d;$('docs-view-name').textContent=d.nome_arquivo||d.titulo;
  $('docs-view-empty').textContent='Carregando documento...';
  if(!(/\.pdf$/i.test(d.nome_arquivo||'')||d.mime_type==='application/pdf')){$('docs-view-empty').textContent='Arquivo Word: pré-visualização indisponível nesta etapa. Utilize o download.';return;}
- try{const blob=await docsGetBlob(d);if(docsSelected?.id!==d.id)return;docsUrl=URL.createObjectURL(new Blob([blob],{type:'application/pdf'}));$('docs-view-frame').src=docsUrl+'#toolbar=0&zoom='+docsZoom;$('docs-view-container').classList.remove('hidden');$('docs-view-empty').classList.add('hidden');}
+ try{const {data,error}=await db.storage.from(docsBucket).createSignedUrl(d.identificador_externo,3600);if(error)throw error;if(!data?.signedUrl)throw Error('Não foi possível obter o endereço temporário do documento.');if(docsSelected?.id!==d.id)return;docsUrl=data.signedUrl;$('docs-view-frame').src=docsUrl+'#toolbar=0&zoom='+docsZoom;$('docs-view-container').classList.remove('hidden');$('docs-view-empty').classList.add('hidden');}
  catch(e){$('docs-view-empty').textContent='Erro ao abrir: '+e.message;}
 }
 async function downloadDocument(d){
