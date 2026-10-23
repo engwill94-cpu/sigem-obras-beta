@@ -3,7 +3,7 @@ const docsBucket='documentos-obras';
 const docsCategories={contrato:'Contrato',termo_referencia:'Termo de Referência',aditamento:'Termo de Aditamento',pgt:'PGT',outro:'Outro'};
 let docsRecords=[],docsSelected=null,docsUrl=null,docsZoom=100,docsRequest=0,docsPdf=null,docsPreviewToken=0;
 function docsMessage(message,isDuplicate=false){const status=$('docs-upload-status');status.textContent=message;status.classList.toggle('docs-duplicate-warning',isDuplicate);status.style.cssText=isDuplicate?'display:block!important;box-sizing:border-box!important;width:100%!important;padding:12px 14px!important;border:2px solid #dc2626!important;border-radius:6px!important;background:#fff5f5!important;color:#b91c1c!important;font-weight:600!important;line-height:1.55!important;overflow-wrap:anywhere!important;':' ';}
-function docsClearPreview(){++docsPreviewToken;docsSelected=null;docsPdf=null;$('docs-view-container').replaceChildren();if(docsUrl&&docsUrl.startsWith('blob:'))URL.revokeObjectURL(docsUrl);docsUrl=null;$('docs-view-container').classList.add('hidden');$('docs-view-empty').classList.remove('hidden');$('docs-view-empty').textContent='Selecione um documento na lista para visualizar.';$('docs-view-name').textContent='Nenhum documento selecionado';}
+function docsClearPreview(){}
 async function loadDocuments(){
  if(!selectedWork||!db)return;
  const id=selectedWork.id,request=++docsRequest;
@@ -24,7 +24,7 @@ function renderDocuments(){
   const name=document.createElement('strong');name.textContent=d.nome_arquivo||d.titulo;
   const meta=document.createElement('small');meta.textContent=(docsCategories[d.categoria]||d.categoria)+' · '+new Date(d.created_at).toLocaleDateString('pt-BR');
   info.append(name,meta);row.append(info);
-  for(const [symbol,title,action,cls] of [['◉','Visualizar',()=>previewDocument(d),''],['↓','Baixar',()=>downloadDocument(d),''],['✕','Excluir',()=>deleteDocument(d),'docs-danger']]){
+  for(const [symbol,title,action,cls] of [['◉','Visualizar',()=>openDocumentNewWindow(d),''],['↓','Baixar',()=>downloadDocument(d),''],['✕','Excluir',()=>deleteDocument(d),'docs-danger']]){
    const button=document.createElement('button');button.type='button';button.className='docs-action '+cls;button.textContent=symbol;button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',action);row.append(button);
   }root.append(row);
  }
@@ -34,54 +34,19 @@ async function docsGetBlob(d){
  const {data,error}=await db.storage.from(docsBucket).download(d.identificador_externo);
  if(error)throw error;return data;
 }
-async function docsRenderPdf(){
- const pdf=docsPdf,token=docsPreviewToken,root=$('docs-view-container');
- if(!pdf)return;
- root.replaceChildren();
- const maxWidth=Math.max(260,root.clientWidth-32);
- for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){
-  if(token!==docsPreviewToken)return;
-  const page=await pdf.getPage(pageNumber);
-  if(token!==docsPreviewToken)return;
-  const base=page.getViewport({scale:1});
-  const scale=(maxWidth/base.width)*(docsZoom/100);
-  const viewport=page.getViewport({scale});
-  const canvas=document.createElement('canvas');
-  canvas.className='docs-pdf-page';
-  const pixelRatio=Math.min(window.devicePixelRatio||1,2);
-  canvas.width=Math.floor(viewport.width*pixelRatio);
-  canvas.height=Math.floor(viewport.height*pixelRatio);
-  canvas.style.width=Math.floor(viewport.width)+'px';
-  canvas.style.height=Math.floor(viewport.height)+'px';
-  canvas.setAttribute('aria-label','Página '+pageNumber+' de '+pdf.numPages);
-  root.append(canvas);
-  const context=canvas.getContext('2d');
-  await page.render({canvasContext:context,viewport,transform:pixelRatio===1?undefined:[pixelRatio,0,0,pixelRatio,0,0]}).promise;
- }
-}
-async function previewDocument(d){
- docsClearPreview();docsSelected=d;$('docs-view-name').textContent=d.nome_arquivo||d.titulo;
- $('docs-view-empty').textContent='Carregando documento...';
- if(!(/\\.pdf$/i.test(d.nome_arquivo||'')||d.mime_type==='application/pdf')){$('docs-view-empty').textContent='Arquivo Word: pré-visualização indisponível nesta etapa. Utilize o download.';return;}
- const token=docsPreviewToken;
+async function openDocumentNewWindow(d){
+ const w=window.open('','_blank');
+ if(!w){docsMessage('O navegador bloqueou a nova janela. Permita pop-ups para visualizar o documento.');return;}
+ w.document.title='Abrindo documento';
+ w.document.body.textContent='Abrindo documento...';
  try{
-  if(!window.pdfjsLib)throw Error('O leitor PDF não foi carregado. Atualize a página e tente novamente.');
-  const blob=await docsGetBlob(d);
-  if(token!==docsPreviewToken)return;
-  const bytes=await blob.arrayBuffer();
-  if(token!==docsPreviewToken)return;
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(bytes)}).promise;
-  if(token!==docsPreviewToken)return;
-  docsPdf=pdf;
-  $('docs-view-container').classList.remove('hidden');
-  $('docs-view-empty').classList.add('hidden');
-  await docsRenderPdf();
- }catch(e){
-  if(token!==docsPreviewToken)return;
-  $('docs-view-container').classList.add('hidden');
-  $('docs-view-empty').classList.remove('hidden');
-  $('docs-view-empty').textContent='Erro ao visualizar PDF: '+(e.message||String(e));
+  if(!d.identificador_externo)throw Error('Arquivo sem referência no armazenamento.');
+  const {data,error}=await db.storage.from(docsBucket).createSignedUrl(d.identificador_externo,3600);
+  if(error)throw error;
+  if(!data?.signedUrl)throw Error('Não foi possível gerar o link de leitura.');
+  w.location.replace(data.signedUrl);
+ }catch(error){
+  w.document.body.textContent='Não foi possível abrir o documento: '+(error.message||String(error));
  }
 }
 async function downloadDocument(d){
@@ -182,18 +147,3 @@ $('docs-send').addEventListener('click',async()=>{
  }
 });
 $('docs-search').addEventListener('input',renderDocuments);$('docs-filter').addEventListener('change',renderDocuments);
-$('docs-download').addEventListener('click',()=>{if(docsSelected)downloadDocument(docsSelected);});
-$('docs-maximize').addEventListener('click',async()=>{
- if(!docsSelected||!docsPdf){docsMessage('Selecione um PDF para ampliar a leitura.');return;}
- const w=window.open('','_blank');
- if(!w){docsMessage('Permita janelas pop-up para ampliar a leitura.');return;}
- w.document.title='Leitura de documento';
- w.document.body.textContent='Abrindo documento...';
- try{
-  const {data,error}=await db.storage.from(docsBucket).createSignedUrl(docsSelected.identificador_externo,3600);
-  if(error)throw error;
-  w.location.href=data.signedUrl;
- }catch(e){w.document.body.textContent='Não foi possível abrir: '+(e.message||String(e));}
-});
-function docsChangeZoom(step){docsZoom=Math.max(50,Math.min(200,docsZoom+step));$('docs-zoom-label').textContent=docsZoom+'%';if(docsPdf){++docsPreviewToken;docsRenderPdf().catch(e=>{if(docsSelected)$('docs-view-empty').textContent='Erro ao ajustar zoom: '+e.message;});}}
-$('docs-zoom-in').addEventListener('click',()=>docsChangeZoom(25));$('docs-zoom-out').addEventListener('click',()=>docsChangeZoom(-25));
