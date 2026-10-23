@@ -491,11 +491,17 @@ function switchWorkTab(tab) {
   if (!selectedWork) return;
   if(tab==='documents')tab='docs-contratual';
   const docsSection=tab.startsWith('docs-')?tab.slice(5):null;
+  const projectSection=tab.startsWith('projects-')?tab.slice(9):null;
+  const projectNames={spobras:'Projetos SPOBRAS',enel:'Projetos ENEL',telecom:'Projetos Telecom',comgas:'Projetos Comgás',diversos:'Projetos Diversos'};
+  if(projectSection&&!projectNames[projectSection])return;
   if(docsSection && !['licitacao','contratual','ambiental','licencas_alvaras'].includes(docsSection))return;
   currentWorkTab=tab;
   navSave();
 
   const isDocs=!!docsSection;
+  const isProjects=!!projectSection;
+  $('projects-menu-toggle').classList.toggle('active',isProjects);
+  if(isProjects){$('projects-submenu').classList.remove('hidden');$('projects-menu-toggle').setAttribute('aria-expanded','true');}
   $('docs-menu-toggle').classList.toggle('active',isDocs);
   $('docs-menu-toggle').setAttribute('aria-expanded',String(!$('docs-submenu').classList.contains('hidden')));
   if(isDocs){$('docs-submenu').classList.remove('hidden');$('docs-menu-toggle').setAttribute('aria-expanded','true');}
@@ -506,12 +512,13 @@ document.querySelectorAll('[data-work-tab]').forEach(b => {
     );
   });
 
-  for (const id of ['overview', 'contracts', 'documents', 'coming']) {
+  for (const id of ['overview', 'contracts', 'documents', 'projects', 'coming']) {
     $('work-tab-' + id).classList.add('hidden');
   }
 
-  if (tab === 'overview' || tab === 'contracts' || isDocs) {
-    $('work-tab-' + (isDocs?'documents':tab)).classList.remove('hidden');
+  if (tab === 'overview' || tab === 'contracts' || isDocs || isProjects) {
+    $('work-tab-' + (isDocs?'documents':isProjects?'projects':tab)).classList.remove('hidden');
+    if(isProjects){$('projects-section-title').textContent=projectNames[projectSection];$('projects-section-description').textContent='Área de projetos da obra selecionada.';}
     if (isDocs && typeof docsSelectSection==='function') docsSelectSection(docsSection);
   } else {
     $('work-tab-coming').classList.remove('hidden');
@@ -529,6 +536,8 @@ document.querySelectorAll('[data-work-tab]').forEach(b => {
     behavior: 'smooth'
   });
 }
+
+$('projects-menu-toggle').addEventListener('click',()=>{const menu=$('projects-submenu');const open=!menu.classList.toggle('hidden');$('projects-menu-toggle').setAttribute('aria-expanded',String(open));});
 
 $('docs-menu-toggle').addEventListener('click',()=>{const menu=$('docs-submenu');const open=!menu.classList.toggle('hidden');$('docs-menu-toggle').setAttribute('aria-expanded',String(open));});
 
