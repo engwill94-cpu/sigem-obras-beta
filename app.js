@@ -1,84 +1,27 @@
 'use strict';
-const $ = (id) => document.getElementById(id);
-const show = (id) => ['setup','login','dashboard'].forEach(x => $(x).classList.toggle('hidden', x !== id));
-const notice = (message) => { $('notice').textContent = message || ''; };
-let db;
-let currentUser = null;
-const cfg = window.SIGEM_CONFIG || {};
-const configured = cfg.supabaseUrl && /^https:\/\/[^/]+\.supabase\.co\/?$/.test(cfg.supabaseUrl) && /^sb_publishable_/.test(cfg.supabasePublishableKey || '');
-if (!configured || !window.supabase) {
-  show('setup');
-  if (!window.supabase) notice('Não foi possível carregar a biblioteca Supabase. Verifique sua conexão.');
-} else {
-  db = window.supabase.createClient(cfg.supabaseUrl, cfg.supabasePublishableKey);
-  initialize();
-}
-async function initialize() {
-  const {data:{session},error} = await db.auth.getSession();
-  if (error) notice('Não foi possível verificar a sessão: ' + error.message);
-  await updateSession(session);
-  db.auth.onAuthStateChange((_event,session) => {
-    // Evitar consultas assíncronas ao Supabase dentro do callback de autenticação.
-    currentUser = session?.user || null;
-    show(currentUser ? 'dashboard' : 'login');
-    if (currentUser) queueMicrotask(loadWorks);
-  });
-}
-async function updateSession(session) {
-  currentUser = session?.user || null;
-  show(currentUser ? 'dashboard' : 'login');
-  if (currentUser) await loadWorks();
-}
-$('login-form').addEventListener('submit',async(e)=>{
-  e.preventDefault(); notice('');
-  $('login-btn').disabled = true;
-  const {data,error} = await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
-  $('login-btn').disabled = false;
-  $('password').value = '';
-  if (error) { notice('Não foi possível entrar. Confira suas credenciais.'); return; }
-  await updateSession(data.session);
-});
-$('logout').addEventListener('click',async()=>{
-  const {error} = await db.auth.signOut();
-  if (error) notice('Falha ao sair: '+error.message);
-  else {notice('Sessão encerrada.'); $('editor').classList.add('hidden'); show('login');}
-});
-async function loadWorks() {
-  if (!currentUser) return;
-  const {data,error} = await db.from('obras').select('id,codigo,nome,municipio,uf,status,orgao,endereco,descricao').order('created_at',{ascending:false});
-  if (error) { notice('Erro ao carregar obras: '+error.message); return; }
-  const works = $('works'); works.replaceChildren();
-  $('empty').classList.toggle('hidden',data.length !== 0);
-  data.forEach(w => {
-    const item=document.createElement('div'); item.className='work';
-    const info=document.createElement('div');
-    const title=document.createElement('strong'); title.textContent=w.codigo+' — '+w.nome;
-    const sub=document.createElement('small'); sub.textContent=[w.municipio,w.uf,w.status].filter(Boolean).join(' • ');
-    info.append(title,sub);
-    const edit=document.createElement('button'); edit.className='secondary'; edit.textContent='Editar'; edit.addEventListener('click',()=>openEditor(w));
-    item.append(info,edit); works.append(item);
-  });
-}
-function openEditor(w=null) {
-  $('work-form').reset();
-  for (const key of ['id','codigo','nome','orgao','municipio','uf','status','endereco','descricao']) {
-    const id=key==='id'?'work-id':key;
-    if (w && $(id)) $(id).value=w[key] ?? '';
-  }
-  $('form-title').textContent=w?'Editar obra':'Nova obra';
-  $('editor').classList.remove('hidden');
-  $('editor').scrollIntoView({behavior:'smooth'});
-}
-$('new-btn').addEventListener('click',()=>openEditor());
-$('cancel-btn').addEventListener('click',()=>$('editor').classList.add('hidden'));
-$('work-form').addEventListener('submit',async(e)=>{
-  e.preventDefault(); notice('');
-  const values={codigo:$('codigo').value.trim(),nome:$('nome').value.trim(),orgao:$('orgao').value.trim()||null,municipio:$('municipio').value.trim()||null,uf:$('uf').value.trim().toUpperCase()||null,endereco:$('endereco').value.trim()||null,descricao:$('descricao').value.trim()||null,status:$('status').value};
-  if(!values.codigo||!values.nome){notice('Informe código e nome.');return;}
-  const id=$('work-id').value;
-  $('save-btn').disabled=true;
-  const {error}=id ? await db.from('obras').update(values).eq('id',id) : await db.from('obras').insert(values);
-  $('save-btn').disabled=false;
-  if(error){notice('Não foi possível salvar: '+error.message);return;}
-  $('editor').classList.add('hidden'); notice('Obra salva com sucesso.'); await loadWorks();
-});
+const $ = id => document.getElementById(id);
+const show = id => ['setup','login','dashboard'].forEach(x=>$(x).classList.toggle('hidden',x!==id));
+const notice = msg => { $('notice').textContent=msg||''; $('auth-notice').textContent=msg||''; };
+const statusMap={planejamento:['Planejamento','s-planning'],em_execucao:['Em execução','s-running'],paralisada:['Paralisada','s-paused'],concluida:['Concluída','s-done'],arquivada:['Arquivada','s-archived']};
+let db,currentUser=null,allWorks=[];
+const cfg=window.SIGEM_CONFIG||{};
+const configured=cfg.supabaseUrl&&/^https:\/\/[^/]+\.supabase\.co\/?$/.test(cfg.supabaseUrl)&&/^sb_publishable_/.test(cfg.supabasePublishableKey||'');
+if(!configured||!window.supabase){show('setup');if(!window.supabase)notice('Não foi possível carregar a biblioteca Supabase. Verifique sua conexão.');}
+else {db=window.supabase.createClient(cfg.supabaseUrl,cfg.supabasePublishableKey);initialize();}
+async function initialize(){const {data:{session},error}=await db.auth.getSession();if(error)notice('Não foi possível verificar a sessão: '+error.message);await updateSession(session);db.auth.onAuthStateChange((_event,session)=>{currentUser=session?.user||null;show(currentUser?'dashboard':'login');if(currentUser)queueMicrotask(loadWorks);});}
+async function updateSession(session){currentUser=session?.user||null;show(currentUser?'dashboard':'login');if(currentUser)await loadWorks();}
+$('login-form').addEventListener('submit',async e=>{e.preventDefault();notice('');$('login-btn').disabled=true;const {data,error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});$('login-btn').disabled=false;$('password').value='';if(error){notice('Não foi possível entrar. Confira suas credenciais.');return;}await updateSession(data.session);});
+$('logout').addEventListener('click',async()=>{const {error}=await db.auth.signOut();if(error)notice('Falha ao sair: '+error.message);else{notice('Sessão encerrada.');$('editor').classList.add('hidden');show('login');}});
+async function loadWorks(){if(!currentUser)return;const {data,error}=await db.from('obras').select('id,codigo,nome,municipio,uf,status,orgao,endereco,descricao,created_at').order('created_at',{ascending:false});if(error){notice('Erro ao carregar obras: '+error.message);return;}allWorks=data||[];updateStats();updateCities();renderWorks();}
+function updateStats(){for(const [id,val] of [['stat-total',allWorks.length],['stat-running',allWorks.filter(w=>w.status==='em_execucao').length],['stat-paused',allWorks.filter(w=>w.status==='paralisada').length],['stat-done',allWorks.filter(w=>w.status==='concluida').length]])$(id).textContent=val;}
+function updateCities(){const sel=$('filter-city'),prev=sel.value;sel.replaceChildren(new Option('Todos',''));[...new Set(allWorks.map(w=>w.municipio).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(city=>sel.add(new Option(city,city)));sel.value=prev;}
+function renderWorks(){const q=$('search').value.trim().toLocaleLowerCase('pt-BR'),status=$('filter-status').value,city=$('filter-city').value;let rows=allWorks.filter(w=>(!status||w.status===status)&&(!city||w.municipio===city)&&[w.codigo,w.nome,w.municipio,w.orgao].some(v=>(v||'').toLocaleLowerCase('pt-BR').includes(q)));if($('sort').value==='name')rows.sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));if($('sort').value==='code')rows.sort((a,b)=>a.codigo.localeCompare(b.codigo,'pt-BR'));const root=$('works');root.replaceChildren();$('empty').classList.toggle('hidden',rows.length>0);$('result-count').textContent=`Mostrando ${rows.length} de ${allWorks.length} obra(s)`;rows.forEach(w=>root.append(makeWorkCard(w)));}
+function makeWorkCard(w){const card=document.createElement('article');card.className='work';const visual=document.createElement('div');visual.className='work-visual';visual.textContent='▥';visual.setAttribute('aria-hidden','true');const body=document.createElement('div');body.className='work-body';const title=document.createElement('div');title.className='work-title';const strong=document.createElement('strong');strong.textContent=w.codigo+' — '+w.nome;const badge=document.createElement('span');badge.className='status-pill '+(statusMap[w.status]?.[1]||'s-archived');badge.textContent=statusMap[w.status]?.[0]||w.status;title.append(strong,badge);const meta=document.createElement('div');meta.className='work-meta';meta.textContent=[w.municipio,w.uf].filter(Boolean).join(' - ')+(w.orgao?'  ·  '+w.orgao:'');const desc=document.createElement('div');desc.className='work-description';desc.textContent=w.descricao||'Obra cadastrada no SIGEM Obras';const progress=document.createElement('div');progress.className='progress-placeholder';const ptxt=document.createElement('span');ptxt.textContent='Evolução física e financeira: aguardando medições';const line=document.createElement('div');line.className='line';progress.append(ptxt,line);body.append(title,meta,desc,progress);const details=document.createElement('div');details.className='work-details';const city=document.createElement('span');city.textContent='⌖  '+(w.municipio||'Município não informado');const org=document.createElement('span');org.textContent='▦  '+(w.orgao||'Órgão não informado');const state=document.createElement('span');state.textContent='◷  '+(statusMap[w.status]?.[0]||w.status);details.append(city,org,state);const actions=document.createElement('div');actions.className='work-actions';const enter=document.createElement('button');enter.type='button';enter.textContent='↗  Entrar';enter.addEventListener('click',()=>enterWork(w));const edit=document.createElement('button');edit.type='button';edit.className='secondary';edit.textContent='✎  Editar';edit.addEventListener('click',()=>openEditor(w));actions.append(enter,edit);card.append(visual,body,details,actions);return card;}
+function enterWork(w){$('editor').classList.add('hidden');$('overview').classList.add('hidden');$('selected-title').textContent=w.codigo+' — '+w.nome;$('work-placeholder').classList.remove('hidden');window.scrollTo({top:0,behavior:'smooth'});}
+function backToOverview(){$('work-placeholder').classList.add('hidden');$('overview').classList.remove('hidden');}
+$('back-overview').addEventListener('click',backToOverview);
+function openEditor(w=null){backToOverview();$('work-form').reset();$('work-id').value='';for(const key of ['id','codigo','nome','orgao','municipio','uf','status','endereco','descricao']){const el=$(key==='id'?'work-id':key);if(w&&el)el.value=w[key]??'';}$('form-title').textContent=w?'Editar obra':'Nova obra';$('editor').classList.remove('hidden');$('editor').scrollIntoView({behavior:'smooth'});}
+$('new-btn').addEventListener('click',()=>openEditor());$('side-new').addEventListener('click',()=>openEditor());$('cancel-btn').addEventListener('click',()=>$('editor').classList.add('hidden'));
+$('work-form').addEventListener('submit',async e=>{e.preventDefault();notice('');const values={codigo:$('codigo').value.trim(),nome:$('nome').value.trim(),orgao:$('orgao').value.trim()||null,municipio:$('municipio').value.trim()||null,uf:$('uf').value.trim().toUpperCase()||null,endereco:$('endereco').value.trim()||null,descricao:$('descricao').value.trim()||null,status:$('status').value};if(!values.codigo||!values.nome){notice('Informe código e nome.');return;}const id=$('work-id').value;$('save-btn').disabled=true;const {error}=id?await db.from('obras').update(values).eq('id',id):await db.from('obras').insert(values);$('save-btn').disabled=false;if(error){notice('Não foi possível salvar: '+error.message);return;}$('editor').classList.add('hidden');notice('Obra salva com sucesso.');await loadWorks();});
+for(const id of ['search','filter-status','filter-city','sort'])$(id).addEventListener(id==='search'?'input':'change',renderWorks);
+document.querySelectorAll('[data-nav]').forEach(btn=>btn.addEventListener('click',()=>{backToOverview();$('editor').classList.add('hidden');if(btn.dataset.nav!=='panel')notice('Este módulo será desenvolvido em uma próxima etapa.');else notice('');}));
