@@ -1,17 +1,18 @@
 'use strict';
 (function(){
  const DISC={A:'Arquitetura',B:'Serviços Iniciais, Estudos e Gestão de Contratos',C:'Estrutura de Concreto',D:'Desapropriação e Cadastro',E:'Sistemas Elétricos e Mecânicos',F:'Geometria',G:'Geologia e Geotecnia',H:'Hidrologia, Hidráulica e Drenagem',I:'Interferência e Cadastro',K:'Métodos Construtivos',L:'Paisagismo',M:'Estruturas Metálicas e de Madeira',N:'Meio Ambiente',O:'Comunicação Visual',P:'Pavimentação',Q:'Terraplanagem',S:'Sinalização e Desvio de Tráfego',T:'Topografia e Aerofotogrametria',U:'Urbanismo e Uso e Ocupação do Solo',V:'Vala Técnica e Projeto Aerodinâmico',W:'Conservação e Manutenção',X:'Impermeabilização'};
+ const TYPES={DE:'Desenho Técnico',RT:'Relatório Técnico',MC:'Memória de Cálculo'};
  const PHASE={4:'Projeto Básico',5:'Projeto Executivo',6:'As Built'};
  const BUCKET='projetos-spobras', MAX=50*1024*1024;
  let records=[],loadedWork=null,request=0;
  const el=id=>document.getElementById(id);
  function message(s,warning=false){const n=el('sp-upload-notice');n.textContent=s;n.classList.toggle('sp-warning',warning);}
  function parse(name){
-  const m=/^(DE)-(VM)-(TV)-(01)-([456])([A-Z])-(00)-([0-9]+)-([A-Z]|[1-9][0-9]*)\.(pdf|dwg|dxf)$/i.exec(name);
-  if(!m)throw Error('Nome fora do padrão DE-VM-TV-01-5A-00-104-1.pdf: '+name);
+  const m=/^(DE|RT|MC)-(VM)-(TV)-(01)-([456])([A-Z])-(00)-([0-9]+)-([A-Z]|[1-9][0-9]*)\.(pdf|dwg|dxf)$/i.exec(name);
+  if(!m)throw Error('Nome fora do padrão DE/RT/MC-VM-TV-01-5A-00-104-1.pdf: '+name);
   const disc=m[6].toUpperCase(),phase=Number(m[5]),ext=m[10].toLowerCase(),rev=m[9].toUpperCase(),sheet=m[8];
   if(!DISC[disc])throw Error('Disciplina reservada ou inválida ('+disc+'): '+name);
-  return {codigo_base:'DE-VM-TV-01-'+phase+disc+'-00',codigo_folha:'DE-VM-TV-01-'+phase+disc+'-00-'+sheet,fase:phase,disciplina:disc,folha:sheet,revisao:rev,formato:ext};
+  return {codigo_base:m[1].toUpperCase()+'-VM-TV-01-'+phase+disc+'-00',codigo_folha:m[1].toUpperCase()+'-VM-TV-01-'+phase+disc+'-00-'+sheet,fase:phase,disciplina:disc,folha:sheet,revisao:rev,formato:ext};
  }
  async function hash(file){
   if(!crypto?.subtle)throw Error('Navegador sem suporte a SHA-256 seguro.');
@@ -32,7 +33,7 @@
   list.replaceChildren();
   for(const [letter,title] of Object.entries(DISC)){
    if(active&&active!==letter)continue;
-   const rows=records.filter(r=>r.disciplina===letter&&(!term||[r.nome_arquivo,r.codigo_folha,r.folha,r.revisao,r.formato,title,PHASE[r.fase]].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(term))));
+   const rows=records.filter(r=>r.disciplina===letter&&(!term||[r.nome_arquivo,r.codigo_folha,r.folha,r.revisao,r.formato,title,PHASE[r.fase],TYPES[r.codigo_folha.slice(0,2)]].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(term))));
    if(!rows.length)continue;
    const details=make('details','sp-discipline-item');details.open=!!active||!!term;
    const summary=make('summary');summary.append(make('span','sp-discipline-label',letter+' — '+title),make('span','sp-count',rows.length+' arquivo(s)'));details.append(summary);
@@ -42,7 +43,7 @@
     if(!group.length)section.append(make('p','','Nenhum arquivo neste formato.'));
     for(const record of group){
      const row=make('div','sp-project-row'),info=make('div','sp-project-name'),actions=make('div','sp-project-actions');
-     info.append(make('strong','',record.nome_arquivo),make('small','',PHASE[record.fase]+' · Folha '+record.folha+' · Rev. '+record.revisao));
+     info.append(make('strong','',record.nome_arquivo),make('small','',(TYPES[record.codigo_folha.slice(0,2)]||'Documento técnico')+' · '+PHASE[record.fase]+' · Folha +record.folha+' · Rev. '+record.revisao));
      if(record.formato==='pdf'){
       const view=make('button','','◉ Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(record));actions.append(view);
      }
