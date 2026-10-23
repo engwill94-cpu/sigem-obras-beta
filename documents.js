@@ -119,3 +119,56 @@ $('docs-maximize').addEventListener('click',()=>{
 });
 function docsChangeZoom(step){docsZoom=Math.max(50,Math.min(200,docsZoom+step));$('docs-zoom-label').textContent=docsZoom+'%';if(docsUrl)$('docs-view-frame').src=docsUrl+'#toolbar=0&zoom='+docsZoom;}
 $('docs-zoom-in').addEventListener('click',()=>docsChangeZoom(25));$('docs-zoom-out').addEventListener('click',()=>docsChangeZoom(-25));
+
+/* Manutenção segura: lista somente arquivos da obra atual sem registro correspondente.
+   Nunca remove documentos cadastrados, nem arquivos recentes ainda em upload. */
+async function docsListAll(prefix){
+ const all=[];
+ for(let offset=0;offset<10000;offset+=100){
+  const {data,error}=await docsWithTimeout(()=>db.storage.from(docsBucket).list(prefix,{limit:100,offset,sortBy:{column:'name',order:'asc'}}),15000);
+  if(error)throw error;
+  all.push(...(data||[]));
+  if(!data||data.length<100)return all;
+ }
+ throw new Error('Muitos arquivos para verificar com segurança. Operação interrompida.');
+}
+$('docs-clean-orphans').addEventListener('click',async()=>{
+ const button=$('docs-clean-orphans'),status=$('docs-clean-status');
+ if(button.disabled||!selectedWork||!db)return;
+ const obraId=selectedWork.id;
+ button.disabled=true;status.textContent='Verificando arquivos desta obra...';
+ try{
+  const {data:records,error:queryError}=await docsWithTimeout(()=>db.from('documentos').select('identificador_externo').eq('obra_id',obraId),15000);
+  if(queryError)throw queryError;
+  if(selectedWork?.id!==obraId)throw Error('A obra selecionada mudou. Reinicie a verificação.');
+  const registered=new Set((records||[]).map(r=>r.identificador_externo).filter(Boolean));
+  const dirs=await docsListAll(obraId);
+  const orphan=[];
+  for(const dir of dirs){
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dir.name)||dir.id)continue;
+   const entries=await docsListAll(obraId+'/'+dir.name);
+   for(const file of entries){
+    if(!file.id)continue;
+    const path=obraId+'/'+dir.name+'/'+file.name;
+    const age=Date.now()-new Date(file.created_at||file.updated_at||Date.now()).getTime();
+    if(!registered.has(path)&&age>10*60*1000)orphan.push(path);
+   }
+  }
+  if(selectedWork?.id!==obraId)throw Error('A obra selecionada mudou. Nenhum arquivo removido.');
+  if(!orphan.length){status.textContent='Nenhum arquivo antigo sem registro encontrado nesta obra.';return;}
+  status.textContent=orphan.length+' arquivo(s) antigo(s) sem cadastro encontrado(s).';
+  const confirmation='Foram encontrados '+orphan.length+' arquivo(s) sem registro nesta obra. Deseja excluí-los permanentemente do Storage? Os documentos cadastrados serão preservados.';
+  if(!confirm(confirmation)){status.textContent='Limpeza cancelada. Nenhum arquivo excluído.';return;}
+  // Verificar novamente os registros antes da remoção para evitar apagar uploads concluídos durante a inspeção.
+  const {data:latest,error:latestError}=await docsWithTimeout(()=>db.from('documentos').select('identificador_externo').eq('obra_id',obraId),15000);
+  if(latestError)throw latestError;
+  if(selectedWork?.id!==obraId)throw Error('A obra selecionada mudou. Nenhum arquivo removido.');
+  const latestPaths=new Set((latest||[]).map(r=>r.identificador_externo));
+  const candidates=orphan.filter(path=>!latestPaths.has(path));
+  if(!candidates.length){status.textContent='Os arquivos já foram cadastrados. Nada foi excluído.';return;}
+  const {data:removed,error:removeError}=await docsWithTimeout(()=>db.storage.from(docsBucket).remove(candidates),30000);
+  if(removeError)throw removeError;
+  status.textContent='Limpeza concluída: '+(removed?.length??candidates.length)+' arquivo(s) removido(s).';
+ }catch(error){status.textContent='Não foi possível concluir a limpeza: '+(error.message||String(error));}
+ finally{button.disabled=false;}
+});
