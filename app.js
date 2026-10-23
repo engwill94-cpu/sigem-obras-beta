@@ -26,6 +26,28 @@ let currentUser = null;
 let allWorks = [];
 let selectedWork = null;
 let workRequest = 0;
+let currentWorkTab='overview';
+const NAV_KEY='sigem_navigation_v1';
+function navSave(){
+ try{
+  if(!currentUser||!selectedWork)return;
+  sessionStorage.setItem(NAV_KEY,JSON.stringify({userId:currentUser.id,obraId:selectedWork.id,tab:currentWorkTab}));
+ }catch(_){}
+}
+function navClear(){try{sessionStorage.removeItem(NAV_KEY);}catch(_){}}
+function navRestore(){
+ if(selectedWork||!currentUser)return;
+ try{
+  const saved=JSON.parse(sessionStorage.getItem(NAV_KEY)||'null');
+  if(!saved||saved.userId!==currentUser.id)return;
+  const work=allWorks.find(w=>w.id===saved.obraId);
+  if(!work){navClear();return;}
+  enterWork(work);
+  const tab=typeof saved.tab==='string'&&document.querySelector('[data-work-tab="'+saved.tab+'"]')?saved.tab:'overview';
+  switchWorkTab(tab);
+ }catch(_){navClear();}
+}
+
 
 const cfg = window.SIGEM_CONFIG || {};
 
@@ -117,6 +139,7 @@ $('logout').addEventListener('click', async () => {
     notice('Sessão encerrada.');
     $('editor').classList.add('hidden');
     backToOverview();
+    navClear();
     show('login');
   }
 });
@@ -140,6 +163,7 @@ async function loadWorks() {
   updateStats();
   updateCities();
   renderWorks();
+  navRestore();
 }
 
 function updateStats() {
@@ -321,6 +345,8 @@ function makeWorkCard(w) {
 
 function enterWork(w) {
   selectedWork = w;
+  currentWorkTab='overview';
+  navSave();
 
   const request = ++workRequest;
 
@@ -390,6 +416,8 @@ function backToOverview() {
 
   ++workRequest;
   selectedWork = null;
+  currentWorkTab='overview';
+  navClear();
 
   $('work-space').classList.add('hidden');
   $('overview').classList.remove('hidden');
@@ -459,6 +487,8 @@ const workTabNames = {
 
 function switchWorkTab(tab) {
   if (!selectedWork) return;
+  currentWorkTab=tab;
+  navSave();
 
   document.querySelectorAll('[data-work-tab]').forEach(b => {
     b.classList.toggle(
