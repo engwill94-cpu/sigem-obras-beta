@@ -34,3 +34,6 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 
 /* Árvore de navegação Documentos */
 .work-main-nav #docs-menu-toggle{display:flex;align-items:center;width:100%}.work-main-nav #docs-menu-toggle .docs-menu-chevron{margin-left:auto;font-size:12px}.work-main-nav .docs-submenu{padding:3px 0 7px 16px;border-left:1px solid rgba(255,255,255,.2);margin-left:19px}.work-main-nav .docs-submenu.hidden{display:none}.work-main-nav .docs-submenu button{display:block;width:100%;text-align:left;padding:10px 12px;font-size:12px;color:#d6e6f2;border-radius:4px}.work-main-nav .docs-submenu button.active{background:#1c4969;color:white;font-weight:700}
+
+/* Árvore Projetos: mesmo padrão visual de Documentos */
+.work-main-nav #projects-menu-toggle{display:flex;align-items:center;width:100%}.work-main-nav #projects-menu-toggle .docs-menu-chevron{margin-left:auto;font-size:12px}
