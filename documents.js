@@ -54,6 +54,17 @@ async function deleteDocument(d){
  if(error){docsMessage('Arquivo removido, mas registro não excluído: '+error.message);return;}
  if(docsSelected?.id===d.id)docsClearPreview();docsMessage('Documento excluído.');await loadDocuments();
 }
+async function docsFileSha256(file){
+ if(!globalThis.crypto?.subtle)throw new Error('Este navegador não oferece verificação criptográfica segura.');
+ const bytes=await file.arrayBuffer();
+ const digest=await crypto.subtle.digest('SHA-256',bytes);
+ return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function docsFindDuplicate(obraId,hash){
+ const {data,error}=await docsWithTimeout(()=>db.from('documentos').select('id,nome_arquivo,titulo').eq('obra_id',obraId).eq('checksum_sha256',hash).limit(1),15000);
+ if(error)throw error;
+ return data?.[0]||null;
+}
 const DOCS_TIMEOUT_MS = 30000;
 function docsWithTimeout(task, ms = DOCS_TIMEOUT_MS) {
  return new Promise((resolve,reject)=>{
@@ -77,15 +88,31 @@ $('docs-send').addEventListener('click',async()=>{
    if(!['pdf','doc','docx'].includes(ext)||file.size>50*1024*1024||file.size===0){
     failed++;docsMessage('Arquivo inválido, vazio ou maior que 50 MB: '+file.name);continue;
    }
+   let hash;
+   try{
+    docsMessage('Verificando conteúdo de '+file.name+'...');
+    hash=await docsFileSha256(file);
+    const duplicate=await docsFindDuplicate(obraId,hash);
+    if(duplicate){
+     failed++;
+     docsMessage('Documento já cadastrado nesta obra: '+(duplicate.nome_arquivo||duplicate.titulo)+'. Disponível para consulta; nenhum novo arquivo foi enviado.');
+     continue;
+    }
+   }catch(error){
+    failed++;
+    docsMessage('Não foi possível verificar duplicidade de '+file.name+': '+(error.message||String(error))+'. Envio bloqueado por segurança.');
+    continue;
+   }
    const path=obraId+'/'+crypto.randomUUID()+'/'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
    const mime=ext==='pdf'?'application/pdf':ext==='doc'?'application/msword':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
    docsMessage('Enviando '+(i+1)+' de '+files.length+': '+file.name+' ('+(file.size/1048576).toFixed(1)+' MB)...');
    try{
     const {error:uploadError}=await docsWithTimeout(()=>db.storage.from(docsBucket).upload(path,file,{contentType:mime,upsert:false}));
     if(uploadError)throw uploadError;
-    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,categoria:category,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,uploaded_by:currentUser.id}));
+    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,categoria:category,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,checksum_sha256:hash,uploaded_by:currentUser.id}));
     if(insertError){
      db.storage.from(docsBucket).remove([path]).then(()=>{},()=>{});
+     if(insertError.code==='23505')throw new Error('Documento já cadastrado nesta obra. O arquivo está disponível para consulta.');
      throw insertError;
     }
     count++;
@@ -102,7 +129,7 @@ $('docs-send').addEventListener('click',async()=>{
   button.textContent='↑ Enviar arquivos';
   if(count) {
    $('docs-file').value='';
-   docsMessage(count+' documento(s) enviado(s).'+(failed?' '+failed+' com falha.':''));
+   docsMessage(count+' documento(s) enviado(s).'+(failed?' '+failed+' não enviado(s); consulte as mensagens de verificação.':''));
   }
   if(selectedWork?.id===obraId) {
    try{await docsWithTimeout(()=>loadDocuments(),15000);}catch(error){docsMessage('Envio encerrado, mas a lista demorou a atualizar. Atualize a página.');}
