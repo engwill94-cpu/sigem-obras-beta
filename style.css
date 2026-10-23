@@ -20,3 +20,14 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 
 /* Documentos: visualização exclusiva em nova aba, lista em largura total. */
 #work-tab-documents .docs-layout{display:block;width:100%}#work-tab-documents .docs-left{width:100%;max-width:none}#work-tab-documents .docs-list{min-height:280px}
+
+/* Painel PDF delimitado: altura alinhada à lista e rolagem independente. */
+#work-tab-documents .docs-layout{display:grid;grid-template-columns:minmax(330px,1.15fr) minmax(330px,1fr);gap:16px;align-items:start}
+#work-tab-documents .docs-left{min-width:0}
+#work-tab-documents .docs-preview-bounded{display:flex;flex-direction:column;height:580px;min-height:0;max-height:calc(100vh - 145px);overflow:hidden;padding:0}
+#work-tab-documents .docs-preview-bounded .docs-toolbar{flex:none}
+#work-tab-documents .docs-preview-bounded .docs-view-container{display:block;flex:1;min-height:0;max-height:none;overflow:hidden;padding:0;background:#e5e7eb}
+#work-tab-documents .docs-preview-bounded .docs-view-container.hidden{display:none}
+#work-tab-documents .docs-preview-bounded iframe{display:block;width:100%;height:100%;min-height:0;border:0;background:#e5e7eb}
+#work-tab-documents .docs-preview-bounded .docs-empty{flex:1;min-height:0}
+@media(max-width:1050px){#work-tab-documents .docs-layout{grid-template-columns:1fr}#work-tab-documents .docs-preview-bounded{height:580px;max-height:75vh}}
