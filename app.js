@@ -42,8 +42,8 @@ function navRestore(){
   if(!saved||saved.userId!==currentUser.id)return;
   const work=allWorks.find(w=>w.id===saved.obraId);
   if(!work){navClear();return;}
-  enterWork(work);
   const tab=typeof saved.tab==='string'&&document.querySelector('[data-work-tab="'+saved.tab+'"]')?saved.tab:'overview';
+  enterWork(work);
   switchWorkTab(tab);
  }catch(_){navClear();}
 }
