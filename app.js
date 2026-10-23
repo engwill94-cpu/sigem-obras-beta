@@ -499,8 +499,6 @@ function switchWorkTab(tab) {
   $('docs-menu-toggle').classList.toggle('active',isDocs);
   $('docs-menu-toggle').setAttribute('aria-expanded',String(!$('docs-submenu').classList.contains('hidden')));
   if(isDocs){$('docs-submenu').classList.remove('hidden');$('docs-menu-toggle').setAttribute('aria-expanded','true');}
-  $('docs-menu-toggle').addEventListener('click',()=>{const menu=$('docs-submenu');const open=menu.classList.toggle('hidden')===false;$('docs-menu-toggle').setAttribute('aria-expanded',String(open));});
-
 document.querySelectorAll('[data-work-tab]').forEach(b => {
     b.classList.toggle(
       'active',
@@ -531,6 +529,8 @@ document.querySelectorAll('[data-work-tab]').forEach(b => {
     behavior: 'smooth'
   });
 }
+
+$('docs-menu-toggle').addEventListener('click',()=>{const menu=$('docs-submenu');const open=!menu.classList.toggle('hidden');$('docs-menu-toggle').setAttribute('aria-expanded',String(open));});
 
 document.querySelectorAll('[data-work-tab]').forEach(b => {
   b.addEventListener('click', () => {
