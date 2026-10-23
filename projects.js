@@ -123,12 +123,12 @@
   }finally{
    btn.disabled=false;btn.textContent='↑ Verificar e cadastrar projetos';
    el('sp-files').value='';
-   if(selectedWork?.id===obra)await load();
+   if(selectedWork?.id===obra){try{await load();}catch(error){console.error('Falha ao atualizar biblioteca SPOBRAS',error);}}
    message(rejected.length?'Arquivos não enviados:\n'+rejected.join('\n'):success+' arquivo(s) cadastrado(s) com sucesso.',rejected.length>0);
   }
  }
- el('sp-upload-button')?.addEventListener('click',upload);
+ el('sp-upload-button')?.addEventListener('click',()=>{message('Iniciando verificação dos arquivos...');upload().catch(error=>{const btn=el('sp-upload-button');btn.disabled=false;btn.textContent='↑ Verificar e cadastrar projetos';message('Não foi possível concluir a verificação: '+(error?.message||String(error)),true);});});
  el('sp-search')?.addEventListener('input',render);
  el('sp-filter')?.addEventListener('change',render);
- render();
+ try{render();}catch(error){message('Erro ao inicializar a biblioteca de projetos: '+(error?.message||String(error)),true);}
 })();
