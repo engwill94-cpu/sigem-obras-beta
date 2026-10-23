@@ -83,7 +83,7 @@ $('docs-send').addEventListener('click',async()=>{
    try{
     const {error:uploadError}=await docsWithTimeout(()=>db.storage.from(docsBucket).upload(path,file,{contentType:mime,upsert:false}));
     if(uploadError)throw uploadError;
-    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,categoria,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,uploaded_by:currentUser.id}));
+    const {error:insertError}=await docsWithTimeout(()=>db.from('documentos').insert({obra_id:obraId,categoria:category,titulo:file.name,nome_arquivo:file.name,provedor:'supabase_storage',identificador_externo:path,mime_type:mime,uploaded_by:currentUser.id}));
     if(insertError){
      db.storage.from(docsBucket).remove([path]).then(()=>{},()=>{});
      throw insertError;
