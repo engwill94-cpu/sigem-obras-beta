@@ -17,3 +17,6 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 #docs-upload-status.docs-duplicate-warning::before{content:none!important;display:none!important}
 
 .docs-view-container{overflow:auto;background:#d7dbe0;padding:16px;min-height:540px;max-height:75vh;text-align:center}.docs-pdf-page{display:block;margin:0 auto 16px;background:white;box-shadow:0 2px 10px rgba(0,0,0,.16);max-width:none}
+
+/* Documentos: visualização exclusiva em nova aba, lista em largura total. */
+#work-tab-documents .docs-layout{display:block;width:100%}#work-tab-documents .docs-left{width:100%;max-width:none}#work-tab-documents .docs-list{min-height:280px}
