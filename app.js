@@ -396,6 +396,8 @@ function enterWork(w) {
 
   $('contract-list').replaceChildren();
 
+  $('docs-submenu').classList.add('hidden');
+  $('docs-menu-toggle').setAttribute('aria-expanded','false');
   switchWorkTab('overview');
 
   document.querySelectorAll('[data-top-tab]').forEach(b => {
@@ -487,10 +489,19 @@ const workTabNames = {
 
 function switchWorkTab(tab) {
   if (!selectedWork) return;
+  if(tab==='documents')tab='docs-contratual';
+  const docsSection=tab.startsWith('docs-')?tab.slice(5):null;
+  if(docsSection && !['licitacao','contratual','ambiental','licencas_alvaras'].includes(docsSection))return;
   currentWorkTab=tab;
   navSave();
 
-  document.querySelectorAll('[data-work-tab]').forEach(b => {
+  const isDocs=!!docsSection;
+  $('docs-menu-toggle').classList.toggle('active',isDocs);
+  $('docs-menu-toggle').setAttribute('aria-expanded',String(!$('docs-submenu').classList.contains('hidden')));
+  if(isDocs){$('docs-submenu').classList.remove('hidden');$('docs-menu-toggle').setAttribute('aria-expanded','true');}
+  $('docs-menu-toggle').addEventListener('click',()=>{const menu=$('docs-submenu');const open=menu.classList.toggle('hidden')===false;$('docs-menu-toggle').setAttribute('aria-expanded',String(open));});
+
+document.querySelectorAll('[data-work-tab]').forEach(b => {
     b.classList.toggle(
       'active',
       b.dataset.workTab === tab
@@ -501,9 +512,9 @@ function switchWorkTab(tab) {
     $('work-tab-' + id).classList.add('hidden');
   }
 
-  if (tab === 'overview' || tab === 'contracts' || tab === 'documents') {
-    $('work-tab-' + tab).classList.remove('hidden');
-    if (tab === 'documents') loadDocuments();
+  if (tab === 'overview' || tab === 'contracts' || isDocs) {
+    $('work-tab-' + (isDocs?'documents':tab)).classList.remove('hidden');
+    if (isDocs && typeof docsSelectSection==='function') docsSelectSection(docsSection);
   } else {
     $('work-tab-coming').classList.remove('hidden');
 
