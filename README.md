@@ -16,3 +16,14 @@ Substituir os arquivos `index.html`, `style.css`, `app.js`, `config.js` e `READM
 6. Sair, atualizar a página e verificar que o login é exigido.
 
 A página é pública no GitHub Pages; dados são protegidos pelas regras do Supabase. Use apenas documentos e dados fictícios enquanto não houver autorização institucional.
+
+
+## Etapa 33 — Ambiente interno da obra
+
+- O botão **Entrar** abre a mesma interface para qualquer obra, preenchida a partir do registro selecionado na tabela `obras`.
+- A visão geral exibe os dados já cadastrados e consulta os contratos pelo `obra_id` com RLS existente.
+- O valor inicial contratual é a soma dos valores iniciais dos contratos cadastrados, **não** representa valor atualizado, execução financeira nem valor medido. Quando houver contrato sem valor, o indicador fica indisponível.
+- Evolução física, evolução financeira e gráfico ficam explicitamente sem dados até a integração de medições.
+- Contratos são somente leitura; os demais módulos mostram telas informativas, sem salvar dados fictícios.
+- Nenhuma tabela, política, chave ou bucket foi criado ou alterado.
+- Para atualizar o GitHub Pages, substitua os arquivos da raiz somente após guardar backup e revisar a versão.
