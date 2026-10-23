@@ -88,7 +88,7 @@
   const btn=el('sp-upload-button'),files=Array.from(el('sp-files').files||[]);
   if(!selectedWork||!currentUser){message('Selecione uma obra e entre no sistema.');return;}
   if(!files.length){message('Selecione os arquivos para cadastro.');return;}
-  const obra=selectedWork.id;let success=0,fail=0,warnings=[];
+  const obra=selectedWork.id;let success=0,fail=0,rejected=[];
   btn.disabled=true;btn.textContent='Verificando arquivos...';
   try{
    for(const file of files){
@@ -106,7 +106,7 @@
      if(sheetError)throw sheetError;
      if(sheetRows.some(r=>r.revisao===parsed.revisao&&r.formato===parsed.formato))throw Error('DUPLICADO: mesma folha, revisão e formato já cadastrados. É necessária conferência gráfica antes de substituir. ⚠️⚠️⚠️');
      const related=sheetRows.filter(r=>r.formato===parsed.formato);
-     if(related.length)warnings.push(file.name+': mesma folha em outra revisão; comparação gráfica de carimbo e desenho não realizada automaticamente.');
+     // Revisões distintas permanecem cadastráveis; comparação gráfica avançada ainda não disponível.
      path=obra+'/'+crypto.randomUUID()+'/'+file.name;
      const mime=parsed.formato==='pdf'?'application/pdf':'application/octet-stream';
      message('Enviando '+file.name+'...');
@@ -116,7 +116,7 @@
      if(insertError)throw insertError;
      path=null;success++;
     }catch(e){
-     fail++;warnings.push(file.name+': '+e.message);
+     fail++;rejected.push(file.name);
      if(path)await db.storage.from(BUCKET).remove([path]).catch(()=>{});
     }
    }
@@ -124,7 +124,7 @@
    btn.disabled=false;btn.textContent='↑ Verificar e cadastrar projetos';
    el('sp-files').value='';
    if(selectedWork?.id===obra)await load();
-   message(success+' projeto(s) cadastrado(s); '+fail+' não cadastrado(s). '+(warnings.join(' | ')||'Arquivos classificados automaticamente.'),fail>0);
+   message(rejected.length?'Arquivos não enviados:\n'+rejected.join('\n'):success+' arquivo(s) cadastrado(s) com sucesso.',rejected.length>0);
   }
  }
  el('sp-upload-button')?.addEventListener('click',upload);
