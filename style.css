@@ -70,3 +70,7 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 .sp-hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.sp-hero-actions .sp-hero-tag{cursor:pointer;font-family:inherit;color:#fff;background:#ffffff19;border:1px solid #ffffff55;border-radius:18px;padding:8px 13px;font-size:12px}.sp-hero-actions .sp-hero-tag:hover{background:#ffffff30}
 
 .work-visual-photo{background-size:cover;background-position:center;background-repeat:no-repeat}.work-photo-editor{margin:14px 0;padding:15px;border:1px solid #dce8ef;border-radius:10px;background:#f8fbfd}.work-photo-editor label{display:block;font-weight:700;margin-bottom:8px}.work-photo-editor input{max-width:100%}.work-photo-preview{display:block;margin-top:12px;max-width:300px;width:100%;max-height:175px;object-fit:cover;border-radius:8px}.work-photo-preview.hidden{display:none}.work-photo-editor p{font-size:12px;color:#567182}
+
+/* Alinhamento único das setas dos menus expansíveis na barra lateral. */
+.work-main-nav #docs-menu-toggle,.work-main-nav #projects-menu-toggle,.work-main-nav #measurements-menu-toggle{display:flex;align-items:center;width:100%;gap:22px}
+.work-main-nav #docs-menu-toggle .docs-menu-chevron,.work-main-nav #projects-menu-toggle .docs-menu-chevron,.work-main-nav #measurements-menu-toggle .docs-menu-chevron{margin-left:auto;flex:0 0 14px;width:14px;text-align:center;font-size:12px}
