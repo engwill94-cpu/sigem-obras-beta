@@ -88,3 +88,10 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 
 /* Critérios: clique na linha seleciona a prévia, botão Visualizar abre aba */
 .crit-layout .med-file-row{cursor:pointer}.crit-layout .med-file-row:focus-visible{outline:2px solid #087281;outline-offset:2px}.crit-layout .med-file-row.active{outline:2px solid #087281;outline-offset:-2px}
+
+/* Biblioteca unificada da navegação lateral */
+.work-main-nav #libraries-menu-toggle{display:flex;align-items:center;width:100%;gap:22px}
+.work-main-nav #libraries-menu-toggle .docs-menu-chevron{margin-left:auto;flex:0 0 14px;text-align:center;font-size:12px}
+.work-main-nav .libraries-submenu{padding:3px 0 9px 12px;margin-left:19px;border-left:1px solid rgba(255,255,255,.24)}
+.work-main-nav .libraries-submenu .library-group-label{padding:14px 12px 5px;color:#95c5df;font-size:12px;font-weight:700;letter-spacing:.03em}
+.work-main-nav .libraries-submenu button{padding:9px 12px;font-size:12px}
