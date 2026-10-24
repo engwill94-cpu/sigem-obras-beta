@@ -2,7 +2,7 @@
 (function(){
 const el=id=>document.getElementById(id);
 const names={documentos:'Documentos',projetos_spobras:'Projetos SPOBRAS',medicoes_arquivos:'Medições',criterios_medicao_arquivos:'Critérios de medição',aditamentos_arquivos:'Aditamento',prateleiras_arquivos:'Prateleiras'};
-let records=[],busy=false;
+let records=[],busy=false,batchRunning=false,batchStop=false;
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function status(message){el('idx-status').textContent=message||'';}
 async function load(){
@@ -36,6 +36,43 @@ async function search(){
  status((data||[]).length+' resultado(s). Somente documentos já processados participam da pesquisa.');
 }
 
+async function batch(){
+ if(busy||batchRunning||!selectedWork?.id)return;
+ batchRunning=true;batchStop=false;
+ const obra=selectedWork.id;
+ el('idx-batch').disabled=true;
+ el('idx-pause').disabled=false;
+ el('idx-next').disabled=true;
+ let completed=0,failed=0;
+ try{
+  await load();
+  const pending=records.filter(r=>r.status==='pendente');
+  const total=pending.length;
+  for(let i=0;i<pending.length;i++){
+   if(batchStop||selectedWork?.id!==obra)break;
+   const item=pending[i];
+   status('Processamento em lote: '+(i+1)+' de '+total+' — '+item.nome_arquivo+' (concluídos: '+completed+', falhas: '+failed+').');
+   try{
+    const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{id:item.id}});
+    if(error){let message=error.message;try{message=(await error.context?.json())?.error||message;}catch{}throw Error(message);}
+    if(data?.status==='concluido')completed++;
+    else if(data?.status==='falhou')failed++;
+   }catch(e){
+    failed++;
+    console.warn('Falha no lote:',item.nome_arquivo,e);
+    status('Falha de comunicação ao processar '+item.nome_arquivo+': '+e.message+'. Lote interrompido para evitar repetições.');
+    break;
+   }
+   await load();
+  }
+  status('Lote '+(batchStop?'pausado':'finalizado/interrompido')+': '+completed+' concluído(s), '+failed+' falha(s). Documentos pendentes permanecem na fila.');
+ }finally{
+  batchRunning=false;el('idx-batch').disabled=false;el('idx-pause').disabled=true;el('idx-next').disabled=false;await load();
+ }
+}
+el('idx-batch').addEventListener('click',batch);
+el('idx-pause').addEventListener('click',()=>{batchStop=true;status('Pausa solicitada. O documento atual terminará antes da interrupção.');});
+
 window.sigemIndexarNovoArquivo=async function(table,obra){
  try{
   const {data,error}=await db.from('documento_indexacao').select('id').eq('obra_id',obra).eq('origem_tabela',table).eq('status','pendente').order('criado_em',{ascending:false}).limit(1);
@@ -46,7 +83,7 @@ window.sigemIndexarNovoArquivo=async function(table,obra){
  }catch(e){console.warn('Indexação pendente:',e);}
 };
 async function limparBibliotecas(){
- if(busy||!selectedWork?.id)return;
+ if(busy||batchRunning||!selectedWork?.id)return;
  if(!confirm('ATENÇÃO: excluir definitivamente todos os documentos das seis bibliotecas desta obra, inclusive arquivos sem registro? A capa e os cadastros administrativos serão preservados.'))return;
  busy=true;el('idx-clean').disabled=true;el('idx-next').disabled=true;
  const obra=selectedWork.id;
