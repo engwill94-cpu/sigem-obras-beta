@@ -7,7 +7,38 @@
  const date=s=>new Date(s).toLocaleString('pt-BR');
  const ext=name=>name.split('.').pop().toLowerCase();
  const status=(message)=>{el('med-upload-status').textContent=message;};
- const competence=s=>s?new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(s.slice(0,7)+'-01T00:00:00Z')).toUpperCase('pt-BR').replace(' DE ','/'):'Não informada';
+ const competence=s=>s?new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(s.slice(0,7)+'-01T00:00:00Z')).toUpperCase('pt-BR').replace(' DE ','/'):'Referência não identificada';
+ const monthNames={'janeiro':1,'fevereiro':2,'marco':3,'abril':4,'maio':5,'junho':6,'julho':7,'agosto':8,'setembro':9,'outubro':10,'novembro':11,'dezembro':12};
+ const normalize=s=>String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+ function findMonth(text){
+  const s=normalize(text).replace(/\\s+/g,' ');
+  const near=/((?:periodo|mes|competencia|referencia)\\s*(?:de|da|do)?\\s*(?:medicao)?\\s*[:\\-–]?\\s*)(.{0,110})/g;
+  const chunks=[...s.matchAll(near)].map(x=>x[2]);
+  const parse=part=>{
+   const words=Object.keys(monthNames).join('|');
+   let m=part.match(new RegExp('\\\\b('+words+')\\\\s*(?:de|\\\\/|\\\\-|\\\\s)*\\\\s*(20\\\\d{2})\\\\b','i'));
+   if(m)return m[2]+'-'+String(monthNames[m[1]]).padStart(2,'0');
+   m=part.match(/\\b(0?[1-9]|1[0-2])\\s*[\\/\\-.]\\s*(20\\d{2})\\b/);
+   if(m)return m[2]+'-'+m[1].padStart(2,'0');
+   return null;
+  };
+  for(const part of chunks){const result=parse(part);if(result)return result;}
+  return parse(s);
+ }
+ async function detectMonth(file,type){
+  if(type==='pdf'){
+   if(!window.pdfjsLib)throw Error('Leitor de PDF indisponível.');
+   const pdfjs=window.pdfjsLib;pdfjs.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+   const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+   try{const page=await pdf.getPage(1),content=await page.getTextContent();const text=content.items.map(x=>x.str||'').join(' ');return findMonth(text);}finally{await pdf.destroy();}
+  }
+  if(!window.XLSX)throw Error('Leitor de Excel indisponível.');
+  const wb=window.XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
+  const cover=wb.SheetNames.find(n=>normalize(n).trim()==='capa');
+  if(!cover)return null;
+  const sheet=wb.Sheets[cover];const cells=Object.keys(sheet).filter(k=>!k.startsWith('!')).sort((a,b)=>{const ca=window.XLSX.utils.decode_cell(a),cb=window.XLSX.utils.decode_cell(b);return ca.r-cb.r||ca.c-cb.c;});
+  const values=cells.map(k=>sheet[k].w||sheet[k].v||'').join(' ');return findMonth(values);
+ }
  const fmt=f=>f==='pdf'?'PDF':f.toUpperCase();
  const make=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
  async function digest(file){const buffer=await file.arrayBuffer();const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',buffer));return [...bytes].map(n=>n.toString(16).padStart(2,'0')).join('');}
@@ -44,7 +75,7 @@
   const files=[...el('med-files').files];if(!files.length){status('Selecione pelo menos um arquivo.');return;}
   const month=el('med-competence').value;if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){status('Informe o mês e ano de referência antes de cadastrar.');return;}
   const id=selectedWork.id;busy=true;el('med-upload').disabled=true;
-  const failures=[];let added=0;
+  const failures=[],unidentified=[];let added=0;
   try{
    for(let i=0;i<files.length;i++){
     const file=files[i],type=ext(file.name);
@@ -53,6 +84,7 @@
     if(file.size>MAX||file.size===0){failures.push(file.name+' — tamanho inválido (limite 50 MB)');continue;}
     try{
      if(selectedWork?.id!==id)throw Error('A obra selecionada foi alterada.');
+     let month=null;try{month=await detectMonth(file,type);}catch(err){console.warn('Leitura automática da capa não concluída:',err);}
      const hash=await digest(file);
      const {data:existing,error:checkError}=await db.from(TABLE).select('id').eq('obra_id',id).eq('checksum_sha256',hash).limit(1);
      if(checkError)throw checkError;
@@ -60,9 +92,9 @@
      const path=id+'/'+crypto.randomUUID()+'.'+type;
      const {error:storageError}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
      if(storageError)throw storageError;
-     const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id,competencia:month+'-01'});
+     const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id,competencia:month?month+'-01':null});
      if(insertError){await db.storage.from(BUCKET).remove([path]);throw insertError;}
-     added++;
+     added++;if(!month)unidentified.push(file.name);
     }catch(error){failures.push(file.name+' — '+error.message);}
    }
    el('med-files').value='';
