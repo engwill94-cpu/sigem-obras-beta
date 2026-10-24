@@ -397,8 +397,8 @@ function enterWork(w) {
 
   $('contract-list').replaceChildren();
 
-  $('docs-submenu').classList.add('hidden');
-  $('docs-menu-toggle').setAttribute('aria-expanded','false');
+  $('libraries-submenu').classList.add('hidden');
+  $('libraries-menu-toggle').setAttribute('aria-expanded','false');
   switchWorkTab('overview');
 
   document.querySelectorAll('[data-top-tab]').forEach(b => {
@@ -506,14 +506,11 @@ function switchWorkTab(tab) {
   const isDocs=!!docsSection;
   const isProjects=!!projectSection;
   const isMeasurements=tab==='measurements'||tab.startsWith('measurement-');
-  $('measurements-menu-toggle').classList.toggle('active',isMeasurements);
-  if(isMeasurements){$('measurements-submenu').classList.remove('hidden');$('measurements-menu-toggle').setAttribute('aria-expanded','true');}
-  $('projects-menu-toggle').classList.toggle('active',isProjects);
-  if(isProjects){$('projects-submenu').classList.remove('hidden');$('projects-menu-toggle').setAttribute('aria-expanded','true');}
-  $('docs-menu-toggle').classList.toggle('active',isDocs);
-  $('docs-menu-toggle').setAttribute('aria-expanded',String(!$('docs-submenu').classList.contains('hidden')));
-  if(isDocs){$('docs-submenu').classList.remove('hidden');$('docs-menu-toggle').setAttribute('aria-expanded','true');}
-document.querySelectorAll('[data-work-tab]').forEach(b => {
+  const isLibrary=isDocs||isProjects||isMeasurements;
+  $('libraries-menu-toggle').classList.toggle('active',isLibrary);
+  if(isLibrary)$('libraries-submenu').classList.remove('hidden');
+  $('libraries-menu-toggle').setAttribute('aria-expanded',String(!$('libraries-submenu').classList.contains('hidden')));
+  document.querySelectorAll('[data-work-tab]').forEach(b => {
     b.classList.toggle(
       'active',
       b.dataset.workTab === tab
@@ -549,11 +546,7 @@ document.querySelectorAll('[data-work-tab]').forEach(b => {
   });
 }
 
-$('projects-menu-toggle').addEventListener('click',()=>{const menu=$('projects-submenu');const open=!menu.classList.toggle('hidden');$('projects-menu-toggle').setAttribute('aria-expanded',String(open));});
-
-$('measurements-menu-toggle').addEventListener('click',()=>{const menu=$('measurements-submenu');const open=!menu.classList.toggle('hidden');$('measurements-menu-toggle').setAttribute('aria-expanded',String(open));});
-
-$('docs-menu-toggle').addEventListener('click',()=>{const menu=$('docs-submenu');const open=!menu.classList.toggle('hidden');$('docs-menu-toggle').setAttribute('aria-expanded',String(open));});
+$('libraries-menu-toggle').addEventListener('click',()=>{const menu=$('libraries-submenu');const open=!menu.classList.toggle('hidden');$('libraries-menu-toggle').setAttribute('aria-expanded',String(open));});
 
 document.querySelectorAll('[data-work-tab]').forEach(b => {
   b.addEventListener('click', () => {
