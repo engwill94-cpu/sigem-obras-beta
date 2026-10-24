@@ -496,6 +496,7 @@ function switchWorkTab(tab) {
   if(projectSection&&!projectNames[projectSection])return;
   if(docsSection && !['licitacao','contratual','ambiental','licencas_alvaras'].includes(docsSection))return;
   currentWorkTab=tab;
+  $('work-overview-header')?.classList.toggle('hidden',tab!=='overview');
   navSave();
 
   const isDocs=!!docsSection;
