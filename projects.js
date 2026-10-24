@@ -167,6 +167,7 @@
      if(uploadError)throw uploadError;
      const {error:insertError}=await timeout(db.from('projetos_spobras').insert({...parsed,obra_id:obra,nome_arquivo:file.name,storage_path:path,checksum_sha256:digest,uploaded_by:currentUser.id}));
      if(insertError)throw insertError;
+     window.sigemIndexarNovoArquivo?.('projetos_spobras',obra);
      path=null;success++;
     }catch(e){
      fail++;rejected.push(file.name);
