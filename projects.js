@@ -284,6 +284,19 @@
     if(!revisions.includes(entry.rev))obsolete.push({entry,revisions});
     else if(revisions.some(r=>r!==entry.rev))obsolete.push({entry,revisions:revisions.filter(r=>r!==entry.rev)});
    }
+   // Ordenação comum ao popup e ao relatório PDF: disciplina A-Z, depois folha crescente.
+   const orderMaster=(a,b)=>{
+    const ca=a.entry?.sheet||a.sheet,cb=b.entry?.sheet||b.sheet;
+    const pa=ca.match(/-([456])([A-Z])-00-([0-9]+)$/),pb=cb.match(/-([456])([A-Z])-00-([0-9]+)$/);
+    if(!pa||!pb)return ca.localeCompare(cb,'pt-BR',{numeric:true});
+    return pa[2].localeCompare(pb[2],'pt-BR')||
+      Number(pa[3])-Number(pb[3])||
+      Number(pa[1])-Number(pb[1])||
+      ca.localeCompare(cb,'pt-BR',{numeric:true});
+   };
+   obsolete.sort(orderMaster);
+   missing.sort(orderMaster);
+   cancelled.sort(orderMaster);
    masterReport={obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:file.name,date:new Date().toLocaleString('pt-BR'),total:master.size,registered:all.length,obsolete,missing,cancelled};
    const body=el('sp-master-results');body.replaceChildren();
    const summary=make('div','sp-master-summary-grid');
