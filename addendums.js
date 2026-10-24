@@ -65,7 +65,7 @@ async function upload(){
  try{
   for(const file of files){
    const type=ext(file.name);
-   if(!['pdf','xls','xlsx','xlsm'].includes(type)||file.size===0||file.size>MAX){errors.push(file.name+': formato ou tamanho inválido (limite 500 MB)');continue;}
+   if(!['xls','xlsx','xlsm'].includes(type)||file.size===0||file.size>MAX){errors.push(file.name+': apenas planilhas Excel (.xls, .xlsx, .xlsm) de até 500 MB são permitidas');continue;}
    let path=null;
    try{
     msg('Verificando '+file.name+'...');
