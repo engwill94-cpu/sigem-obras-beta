@@ -466,7 +466,7 @@ const workTabNames = {
     'Os aditivos contratuais desta obra serão apresentados aqui.'
   ],
   items: [
-    'Planilhas e itens',
+    'Gerenciamento',
     'As planilhas e os itens contratuais serão apresentados aqui.'
   ],
   audit: [
