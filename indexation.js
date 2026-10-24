@@ -20,7 +20,7 @@ async function process(id){
  busy=true;el('idx-next').disabled=true;status('Processando documento. Aguarde...');
  try{
   const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:id?{id}:{}});
-  if(error)throw error;
+  if(error){let detail=error.message;try{const body=await error.context?.json();detail=body?.error||body?.message||detail;}catch{}throw Error(detail);}
   status(data?.status==='concluido'?'Documento indexado: '+data.trechos+' trechos.':data?.status==='falhou'?'Processamento não concluído: '+data.erro:data?.status==='sem_pendencias'?'Não há documentos pendentes.':'Resultado: '+(data?.status||'indisponível'));
  }catch(e){status('Falha ao chamar o processador: '+(e.message||e));}
  finally{busy=false;el('idx-next').disabled=false;await load();}
