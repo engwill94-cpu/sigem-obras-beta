@@ -86,7 +86,7 @@
  async function preparePdf(file){
   if(!window.pdfjsLib||!window.PDFLib||!window.Tesseract)throw Error('Dependências de conversão OCR indisponíveis.');
   const buffer=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer)}).promise;
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer.slice(0))}).promise;
   let converted=null,worker=null,count=0,period=null,font=null;
   try{
    for(let n=1;n<=pdf.numPages;n++){
