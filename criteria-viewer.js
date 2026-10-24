@@ -6,10 +6,10 @@ const status=s=>$('status').textContent=s;
 if(!pdfjs){status('Não foi possível carregar o leitor de PDF.');return;}
 pdfjs.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 let args;try{args=JSON.parse(decodeURIComponent(location.hash.slice(1)));}catch(_){status('Link de visualização inválido.');return;}
-let url;try{url=new URL(args.url);if(url.protocol!=='https:'||url.hostname!=='nigrecjshlxflczfzssn.supabase.co'&&url.hostname!=='nigrecjshlxflczfzssn.storage.supabase.co')throw Error();}catch(_){status('Origem do arquivo não autorizada.');return;}
+let url;try{url=new URL(args.url);if(url.protocol!=='blob:'||url.origin!==location.origin)throw Error();}catch(_){status('Origem do arquivo não autorizada.');return;}
 $('filename').textContent=String(args.name||'Critério de medição');
 history.replaceState(null,'',location.pathname);
-try{pdf=await pdfjs.getDocument({url:url.href}).promise;status('Documento carregado. Use a pesquisa para localizar termos nas páginas.');await render();}catch(e){status('Não foi possível abrir o PDF: '+e.message);return;}
+try{pdf=await pdfjs.getDocument({url:url.href,disableRange:true,disableStream:true}).promise;status('Documento carregado. Use a pesquisa para localizar termos nas páginas.');await render();}catch(e){status('Não foi possível abrir o PDF: '+e.message);return;}
 async function render(){
 const token=++renderSeq,page=await pdf.getPage(pageNum),viewport=page.getViewport({scale:1.35}),canvas=$('canvas');
 if(token!==renderSeq)return;
