@@ -45,15 +45,12 @@ async function process(id){
  finally{busy=false;el('idx-next').disabled=false;await load();}
 }
 async function search(){
- const term=el('idx-query').value.trim();if(!term){status('Digite um termo para pesquisar.');return;}
+ const term=el('idx-query').value.trim();
+ if(!term){status('Digite um termo para pesquisar.');return;}
  if(term.length>120){status('Use uma consulta com até 120 caracteres.');return;}
- status('Pesquisando...');el('idx-results').textContent='';
- const {data,error}=await db.from('documento_trechos').select('indexacao_id,pagina,aba,celula_inicio,conteudo').eq('obra_id',selectedWork.id).textSearch('busca',term,{type:'websearch',config:'portuguese'}).limit(30);
- if(error){status('Pesquisa indisponível: '+error.message);return;}
- const byId=new Map(records.filter(r=>r.status==='concluido').map(r=>[r.id,r]));
- const valid=(data||[]).filter(t=>byId.has(t.indexacao_id));
- el('idx-results').innerHTML=valid.length?valid.map(t=>'<article class="idx-result"><strong>'+escape(byId.get(t.indexacao_id)?.nome_arquivo||'Documento')+'</strong><small>'+(t.pagina?'Página '+t.pagina:t.aba?'Aba '+escape(t.aba)+(t.celula_inicio?' · célula '+escape(t.celula_inicio):''):'Referência documental')+'</small><p>'+escape(t.conteudo.slice(0,700))+'</p></article>').join(''):'Nenhum trecho encontrado nos documentos já indexados.';
- status(valid.length+' resultado(s). Somente documentos concluídos participam da pesquisa.');
+ if(!selectedWork?.id){status('Selecione uma obra.');return;}
+ try{await window.sigemPesquisaDocumental.list(term,records,status);}
+ catch(e){status('Pesquisa indisponível: '+e.message);}
 }
 
 async function verificarTravados(){
