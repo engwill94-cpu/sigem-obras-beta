@@ -4,7 +4,7 @@
  const TYPES={DE:'Desenho Técnico',RT:'Relatório Técnico',MC:'Memória de Cálculo'};
  const PHASE={4:'Projeto Básico',5:'Projeto Executivo',6:'As Built'};
  const BUCKET='projetos-spobras', MAX=50*1024*1024;
- let records=[],loadedWork=null,request=0;
+ let records=[],loadedWork=null,request=0,visibleRows=[],zipBusy=false;
  const el=id=>document.getElementById(id);
  function message(s,warning=false){const n=el('sp-upload-notice');n.textContent=s;n.classList.toggle('sp-warning',warning);}
  function parse(name){
@@ -52,12 +52,16 @@
   el('sp-pdf-count').textContent=records.filter(r=>r.formato==='pdf').length;
   el('sp-cad-count').textContent=records.filter(r=>r.formato!=='pdf').length;
   list.replaceChildren();
+  visibleRows=[];
+  const zipButton=el('sp-download-all');if(zipButton){zipButton.disabled=true;zipButton.hidden=true;}
   if(!filter.value){list.append(make('p','sp-library-footnote','Selecione uma disciplina para consultar os arquivos cadastrados.'));return;}
   let rows=records.filter(r=>r.disciplina===filter.value);
   if(onlyLatest)rows=latestRows(rows);
   
   rows.sort((a,b)=>a.codigo_folha.localeCompare(b.codigo_folha,'pt-BR',{numeric:true})||revisionRank(b.revisao)[0]-revisionRank(a.revisao)[0]||revisionRank(b.revisao)[1]-revisionRank(a.revisao)[1]);
   if(!rows.length){list.append(make('p','sp-library-footnote','Nenhum projeto encontrado para esta disciplina e filtros.'));return;}
+  visibleRows=rows.slice();
+  if(zipButton){zipButton.hidden=false;zipButton.disabled=zipBusy;zipButton.textContent=zipBusy?'Preparando ZIP...':'↓ Baixar todos (.zip)';}
   list.append(make('p','sp-library-result',rows.length+' arquivo(s) · '+active+' — '+DISC[active]));
   for(const [format,label] of [['pdf','Arquivos PDF'],['cad','Arquivos DWG / DXF']]){
    const group=rows.filter(r=>format==='pdf'?r.formato==='pdf':r.formato!=='pdf');
@@ -104,6 +108,35 @@
    a.href=url;a.download=record.nome_arquivo;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
   }catch(e){message('Falha ao baixar '+record.nome_arquivo+': '+e.message);}
  }
+ async function downloadAllVisible(){
+  if(zipBusy||!visibleRows.length)return;
+  const btn=el('sp-download-all'),notice=el('sp-zip-notice');
+  if(typeof JSZip==='undefined'){notice.textContent='Gerador ZIP indisponível. Atualize a página.';return;}
+  const selected=visibleRows.slice(),obra=selectedWork?.id,discipline=el('sp-filter')?.value;
+  zipBusy=true;btn.disabled=true;btn.textContent='Preparando ZIP...';notice.textContent='Iniciando download de '+selected.length+' arquivo(s)...';
+  try{
+   const zip=new JSZip(),failures=[];
+   for(let i=0;i<selected.length;i++){
+    const record=selected[i];
+    if(selectedWork?.id!==obra)throw Error('A obra selecionada foi alterada. Operação interrompida.');
+    notice.textContent='Preparando ZIP: '+(i+1)+' de '+selected.length+' — '+record.nome_arquivo;
+    try{
+     const {data,error}=await timeout(db.storage.from(BUCKET).download(record.storage_path),90000);
+     if(error)throw error;
+     zip.file(record.nome_arquivo,data);
+    }catch(error){failures.push(record.nome_arquivo+': '+error.message);}
+   }
+   if(failures.length)throw Error('Não foi possível baixar todos os arquivos. '+failures.length+' falha(s): '+failures.slice(0,3).join('; ')+'. Nenhum ZIP parcial foi gerado.');
+   notice.textContent='Compactando '+selected.length+' arquivo(s)...';
+   const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}},metadata=>{notice.textContent='Compactando: '+Math.round(metadata.percent)+'%';});
+   const url=URL.createObjectURL(blob),link=document.createElement('a');
+   link.href=url;link.download='SPOBRAS_'+discipline+'_'+(el('sp-latest-only')?.checked?'ultimas_revisoes':'todas_revisoes')+'.zip';
+   document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+   notice.textContent='ZIP gerado com '+selected.length+' arquivo(s).';
+  }catch(error){notice.textContent='Falha ao gerar ZIP: '+error.message;}
+  finally{zipBusy=false;btn.disabled=!visibleRows.length;btn.textContent='↓ Baixar todos (.zip)';}
+ }
+ el('sp-download-all')?.addEventListener('click',()=>downloadAllVisible());
  async function upload(){
   const btn=el('sp-upload-button'),files=Array.from(el('sp-files').files||[]);
   if(!selectedWork||!currentUser){message('Selecione uma obra e entre no sistema.');return;}
