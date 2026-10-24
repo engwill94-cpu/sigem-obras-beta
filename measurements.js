@@ -1,6 +1,6 @@
 'use strict';
 (function(){
- const BUCKET='medicoes-obras',TABLE='medicoes_arquivos',MAX=50*1024*1024;
+ const BUCKET='medicoes-obras',TABLE='medicoes_arquivos',MAX=500*1024*1024;
  const el=id=>document.getElementById(id);
  let rows=[],active='excel',workId=null,busy=false,deleteTarget=null,editTarget=null,seq=0;
  const size=n=>n<1048576?Math.max(1,Math.round(n/1024))+' KB':(n/1048576).toFixed(1)+' MB';
@@ -75,6 +75,22 @@
   if(error){status('Não foi possível consultar a biblioteca: '+error.message);return;}
   rows=data||[];render();
  }
+ async function storageUpload(path,file){
+  if(file.size<=6*1024*1024)return db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
+  if(!window.tus)return {error:new Error('Módulo de upload de arquivos grandes não carregado.')};
+  const {data:session,error:sessionError}=await db.auth.getSession();if(sessionError||!session?.session?.access_token)return {error:sessionError||new Error('Sessão expirada. Entre novamente.')};
+  return new Promise(resolve=>{
+   const upload=new window.tus.Upload(file,{
+    endpoint:'https://nigrecjshlxflczfzssn.storage.supabase.co/storage/v1/upload/resumable',
+    retryDelays:[0,3000,5000,10000,20000],chunkSize:6*1024*1024,
+    headers:{authorization:'Bearer '+session.session.access_token},
+    uploadDataDuringCreation:true,removeFingerprintOnSuccess:true,
+    metadata:{bucketName:BUCKET,objectName:path,contentType:file.type||'application/octet-stream',cacheControl:'3600'},
+    onError:error=>resolve({error}),onSuccess:()=>resolve({error:null}),
+    onProgress:(sent,total)=>status('Enviando '+file.name+': '+Math.round(sent/total*100)+'%')
+   });upload.start();
+  });
+ }
  async function upload(){
   if(busy||!selectedWork)return;
   const files=[...el('med-files').files];if(!files.length){status('Selecione pelo menos um arquivo.');return;}
@@ -85,7 +101,7 @@
     const file=files[i],type=ext(file.name);
     status('Processando '+(i+1)+' de '+files.length+': '+file.name);
     if(!['xls','xlsx','xlsm','pdf'].includes(type)){failures.push(file.name+' — formato não permitido');continue;}
-    if(file.size>MAX||file.size===0){failures.push(file.name+' — tamanho inválido (limite 50 MB)');continue;}
+    if(file.size>MAX||file.size===0){failures.push(file.name+' — tamanho inválido (limite 500 MB)');continue;}
     try{
      if(selectedWork?.id!==id)throw Error('A obra selecionada foi alterada.');
      let month=null;try{month=await detectMonth(file,type);}catch(err){console.warn('Leitura automática da capa não concluída:',err);}
