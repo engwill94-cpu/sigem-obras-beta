@@ -442,6 +442,9 @@ const workTabNames = {
     'Medições',
     'Os registros e os indicadores serão apresentados após integração das medições desta obra.'
   ],
+  'measurement-amendment': ['Aditamento','O acompanhamento dos aditamentos de medição será apresentado neste módulo.'],
+  'measurement-shelves': ['Prateleiras','As prateleiras de medição serão apresentadas neste módulo.'],
+  'measurement-criteria': ['Critérios de medição','Os critérios de medição serão apresentados neste módulo.'],
   schedule: [
     'Cronograma',
     'O cronograma físico-financeiro será integrado em uma próxima etapa.'
@@ -502,6 +505,9 @@ function switchWorkTab(tab) {
 
   const isDocs=!!docsSection;
   const isProjects=!!projectSection;
+  const isMeasurements=tab==='measurements'||tab.startsWith('measurement-');
+  $('measurements-menu-toggle').classList.toggle('active',isMeasurements);
+  if(isMeasurements){$('measurements-submenu').classList.remove('hidden');$('measurements-menu-toggle').setAttribute('aria-expanded','true');}
   $('projects-menu-toggle').classList.toggle('active',isProjects);
   if(isProjects){$('projects-submenu').classList.remove('hidden');$('projects-menu-toggle').setAttribute('aria-expanded','true');}
   $('docs-menu-toggle').classList.toggle('active',isDocs);
@@ -540,6 +546,8 @@ document.querySelectorAll('[data-work-tab]').forEach(b => {
 }
 
 $('projects-menu-toggle').addEventListener('click',()=>{const menu=$('projects-submenu');const open=!menu.classList.toggle('hidden');$('projects-menu-toggle').setAttribute('aria-expanded',String(open));});
+
+$('measurements-menu-toggle').addEventListener('click',()=>{const menu=$('measurements-submenu');const open=!menu.classList.toggle('hidden');$('measurements-menu-toggle').setAttribute('aria-expanded',String(open));});
 
 $('docs-menu-toggle').addEventListener('click',()=>{const menu=$('docs-submenu');const open=!menu.classList.toggle('hidden');$('docs-menu-toggle').setAttribute('aria-expanded',String(open));});
 
