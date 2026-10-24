@@ -67,7 +67,7 @@
   for(const row of visible){
    const item=make('div','med-file-row'),icon=make('span','med-file-icon',row.formato==='pdf'?'▤':'▦');
    const info=make('div','med-file-info'),name=make('strong','',row.nome_arquivo),meta=make('small','',fmt(row.formato)+' · '+size(row.tamanho_bytes)+' · '+date(row.created_at));
-   info.append(name,meta);const ref=make('div','med-file-competence');ref.append(make('span','','MÊS DE REFERÊNCIA'),make('strong','',competence(row.competencia)));const edit=make('button','med-ref-edit','Editar');edit.type='button';edit.addEventListener('click',()=>editCompetence(row));ref.append(edit);if(!row.competencia){const retry=make('button','med-ref-edit','Identificar novamente');retry.type='button';retry.addEventListener('click',()=>retryCompetence(row));ref.append(retry);}const actions=make('div','med-file-actions');
+   info.append(name,meta);if(row.formato==='pdf'){info.append(make('small','',row.ocr_status==='convertido'?'PDF pesquisável (OCR)':row.ocr_status==='original_pesquisavel'?'PDF com texto original':'PDF anterior ao processamento OCR'));}const ref=make('div','med-file-competence');ref.append(make('span','','MÊS DE REFERÊNCIA'),make('strong','',competence(row.competencia)));const edit=make('button','med-ref-edit','Editar');edit.type='button';edit.addEventListener('click',()=>editCompetence(row));ref.append(edit);if(!row.competencia){const retry=make('button','med-ref-edit','Identificar novamente');retry.type='button';retry.addEventListener('click',()=>retryCompetence(row));ref.append(retry);}const actions=make('div','med-file-actions');
    if(row.formato==='pdf'){const view=make('button','','Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(row));actions.append(view);}
    const down=make('button','','Baixar');down.type='button';down.addEventListener('click',()=>download(row));actions.append(down);
    const del=make('button','med-delete','Excluir');del.type='button';del.addEventListener('click',()=>askDelete(row));actions.append(del);
@@ -77,11 +77,53 @@
  async function load(){
   const id=selectedWork?.id,token=++seq;workId=id;rows=[];el('med-search').value='';status('');
   render();if(!id)return;
-  const {data,error}=await db.from(TABLE).select('id,obra_id,nome_arquivo,formato,tamanho_bytes,storage_path,checksum_sha256,uploaded_by,created_at,competencia').eq('obra_id',id).order('created_at',{ascending:false});
+  const {data,error}=await db.from(TABLE).select('id,obra_id,nome_arquivo,formato,tamanho_bytes,storage_path,checksum_sha256,uploaded_by,created_at,competencia,pdf_pesquisavel_path,ocr_status,ocr_detalhe').eq('obra_id',id).order('created_at',{ascending:false});
   if(token!==seq||selectedWork?.id!==id)return;
   if(error){status('Não foi possível consultar a biblioteca: '+error.message);return;}
   rows=data||[];render();
  }
+
+ async function preparePdf(file){
+  if(!window.pdfjsLib||!window.PDFLib||!window.Tesseract)throw Error('Dependências de conversão OCR indisponíveis.');
+  const buffer=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer.slice(0))}).promise;
+  let converted=null,worker=null,count=0,period=null;
+  try{
+   for(let n=1;n<=pdf.numPages;n++){
+    const page=await pdf.getPage(n),content=await page.getTextContent();
+    const text=content.items.map(x=>x.str||'').join(' ');
+    if(n===1)period=findMonth(text);
+    if(text.trim().length>35)continue;
+    if(!converted)converted=await PDFLib.PDFDocument.load(buffer,{updateMetadata:false});
+    if(!worker)worker=await Tesseract.createWorker('por');
+    status('Aplicando OCR à página '+n+' de '+pdf.numPages+'...');
+    const viewport=page.getViewport({scale:1.7}),canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    await page.render({canvasContext:ctx,viewport}).promise;
+    const result=await worker.recognize(canvas);
+    canvas.width=0;canvas.height=0;
+    if(n===1&&!period)period=findMonth(result.data.text);
+    const p=converted.getPage(n-1),{width,height}=p.getSize();
+    const font=await converted.embedFont(PDFLib.StandardFonts.Helvetica);
+    for(const line of result.data.lines||[]){
+     const box=line.bbox;if(!box||!line.text?.trim())continue;
+     const x=Math.max(0,box.x0/viewport.width*width),y=Math.max(0,height-box.y1/viewport.height*height);
+     const fontSize=Math.max(4,Math.min(22,(box.y1-box.y0)/viewport.height*height));
+     const safe=line.text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,'');
+     if(!safe.trim())continue;
+     p.drawText(safe,{x,y,size:fontSize,font,color:PDFLib.rgb(0,0,0),opacity:0});
+    }
+    count++;
+   }
+   if(!converted)return {file:null,period,status:'original_pesquisavel',detail:'Todas as páginas possuem texto pesquisável.'};
+   if(!count)throw Error('Não foi possível reconhecer texto nas páginas digitalizadas.');
+   status('Gerando versão PDF pesquisável...');
+   const bytes=await converted.save({useObjectStreams:true});
+   return {file:new File([bytes],file.name.replace(/\.pdf$/i,'')+'-pesquisavel.pdf',{type:'application/pdf'}),period,status:'convertido',detail:count+' página(s) processada(s) com OCR'};
+  }finally{if(worker)await worker.terminate();await pdf.destroy();}
+ }
+
  async function storageUpload(path,file){
   if(file.size<=6*1024*1024)return db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
   if(!window.tus)return {error:new Error('Módulo de upload de arquivos grandes não carregado.')};
@@ -111,7 +153,8 @@
     if(file.size>MAX||file.size===0){failures.push(file.name+' — tamanho inválido (limite 500 MB)');continue;}
     try{
      if(selectedWork?.id!==id)throw Error('A obra selecionada foi alterada.');
-     let month=null;try{month=await detectMonth(file,type);}catch(err){console.warn('Leitura automática da capa não concluída:',err);}
+     let month=null,processed=null;
+     if(type==='pdf'){processed=await preparePdf(file);month=processed.period;}else{try{month=await detectMonth(file,type);}catch(err){console.warn('Leitura automática da capa não concluída:',err);}}
      const hash=await digest(file);
      const {data:existing,error:checkError}=await db.from(TABLE).select('id').eq('obra_id',id).eq('checksum_sha256',hash).limit(1);
      if(checkError)throw checkError;
@@ -119,8 +162,10 @@
      const path=id+'/'+crypto.randomUUID()+'.'+type;
      const {error:storageError}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
      if(storageError)throw storageError;
-     const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id,competencia:month?month+'-01':null});
-     if(insertError){await db.storage.from(BUCKET).remove([path]);throw insertError;}
+     let searchablePath=null;
+     if(processed?.file){searchablePath=id+'/pesquisaveis/'+crypto.randomUUID()+'.pdf';const {error:ocrUploadError}=await storageUpload(searchablePath,processed.file);if(ocrUploadError){await db.storage.from(BUCKET).remove([path]);throw ocrUploadError;}}
+     const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id,competencia:month?month+'-01':null,pdf_pesquisavel_path:searchablePath,ocr_status:processed?.status||null,ocr_detalhe:processed?.detail||null});
+     if(insertError){await db.storage.from(BUCKET).remove([path,...(searchablePath?[searchablePath]:[])]);throw insertError;}
      added++;if(!month)unidentified.push(file.name);
     }catch(error){failures.push(file.name+' — '+error.message);}
    }
@@ -153,7 +198,7 @@
  async function openPdf(row){
   const tab=window.open('about:blank','_blank');
   try{
-   const {data,error}=await db.storage.from(BUCKET).createSignedUrl(row.storage_path,120);
+   const {data,error}=await db.storage.from(BUCKET).createSignedUrl(row.pdf_pesquisavel_path||row.storage_path,120);
    if(error)throw error;
    if(tab)tab.location.href=data.signedUrl;else window.location.href=data.signedUrl;
   }catch(error){if(tab)tab.close();status('Não foi possível visualizar o PDF: '+error.message);}
@@ -166,7 +211,7 @@
   if(id!==row.obra_id){el('med-delete-status').textContent='A obra selecionada foi alterada.';return;}
   busy=true;el('med-delete-confirm').disabled=true;
   try{
-   const {data:removed,error:storageError}=await db.storage.from(BUCKET).remove([row.storage_path]);
+   const {data:removed,error:storageError}=await db.storage.from(BUCKET).remove([row.storage_path,...(row.pdf_pesquisavel_path?[row.pdf_pesquisavel_path]:[])]);
    if(storageError)throw storageError;
    if(!removed?.length)throw Error('O arquivo não foi localizado no armazenamento.');
    const {error:dbError}=await db.from(TABLE).delete().eq('id',row.id).eq('obra_id',id);
