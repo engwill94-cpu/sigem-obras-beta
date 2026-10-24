@@ -129,3 +129,8 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 .idx-view-body h4{text-align:left;max-width:950px;margin:18px auto 8px}
 .idx-excel-row{text-align:left;max-width:950px;margin:0 auto;padding:12px;background:#fff;border-bottom:1px solid #e2eaf0;overflow-wrap:anywhere}
 @media(max-width:650px){.idx-viewer{padding:0}.idx-view-shell{width:100vw;height:100dvh;border-radius:0}.idx-view-header,.idx-view-nav{padding:10px}.idx-view-body{padding:10px}}
+
+/* Destaque por OCR posicional em PDFs digitalizados, sem alterar o original */
+.idx-ocr-box{position:absolute;box-sizing:border-box;background:rgba(255,228,0,.40);border:1px solid rgba(201,140,0,.7);border-radius:2px;pointer-events:none}
+.idx-ocr-box-active{background:rgba(255,220,0,.72);outline:2px solid #d08b00}
+.idx-ocr-notice{max-width:950px;margin:10px auto;background:#fff7df;border:1px solid #e5ca82;border-radius:6px;padding:10px 14px;text-align:left;font-size:13px;color:#684c11}
