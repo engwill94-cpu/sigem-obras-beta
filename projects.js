@@ -150,7 +150,7 @@
  // LISTA MESTRA SPOBRAS — coluna A: código vigente; coluna J: Status.
  let masterBusy=false,masterPending=null;
  function masterCode(raw){
-  const s=String(raw??'').trim().toUpperCase().replace(/\\.(PDF|DWG|DXF)$/,'').replace(/\\s+/g,'');
+  const s=String(raw??'').trim().toUpperCase().replace(/\.(PDF|DWG|DXF)$/,'').replace(/\s+/g,'');
   const m=/^(DE|RT|MC)-VM-TV-01-([456])([A-Z])-00-([0-9]+)-([A-Z]|[1-9][0-9]*)$/.exec(s);
   if(!m||!DISC[m[3]])return null;
   return {sheet:m[1]+'-VM-TV-01-'+m[2]+m[3]+'-00-'+m[4],rev:m[5],code:s};
@@ -169,7 +169,7 @@
   if(!selectedWork||!currentUser){masterNotice('Selecione uma obra e entre no sistema.',true);return;}
   const input=el('sp-master-file'),file=input?.files?.[0];
   if(!file){masterNotice('Selecione a Lista Mestra em Excel.',true);return;}
-  if(!/\\.xlsx?$/i.test(file.name)){masterNotice('Formato inválido. Selecione .xls ou .xlsx.',true);return;}
+  if(!/\.(xls|xlsx)$/i.test(file.name)){masterNotice('Formato inválido. Selecione .xls ou .xlsx.',true);return;}
   if(file.size>15*1024*1024){masterNotice('A planilha excede 15 MB.',true);return;}
   if(typeof XLSX==='undefined'){masterNotice('Leitor de Excel indisponível. Recarregue a página.',true);return;}
   const btn=el('sp-master-import');masterBusy=true;btn.disabled=true;btn.textContent='Comparando projetos...';
