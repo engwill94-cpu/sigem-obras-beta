@@ -201,7 +201,76 @@
   wrap.append(ul);return wrap;
  }
 
- let masterReport=null;
+ let masterReport=null,masterHistoryId=null;
+ async function latestMasterHistory(){
+  if(!selectedWork)throw Error('Selecione uma obra.');
+  const {data,error}=await db.from('spobras_lista_mestra_historico').select('id,dados,importado_em,arquivo_nome,exclusao_confirmada_em,exclusao_resultado').eq('obra_id',selectedWork.id).order('importado_em',{ascending:false}).limit(1);
+  if(error)throw error;
+  return data?.[0]||null;
+ }
+ function showMasterReport(report,readOnly=false,history=null){
+  masterReport=report;
+  const body=el('sp-master-results');body.replaceChildren();
+  const summary=make('div','sp-master-summary-grid');
+  for(const [label,value] of [['Folhas analisadas',report.total],['Revisões obsoletas',report.obsolete.length],['Folhas ausentes',report.missing.length],['Folhas canceladas',report.cancelled.length]]){
+   const card=make('div','sp-master-stat');card.append(make('strong','',String(value)),make('span','',label));summary.append(card);
+  }
+  body.append(make('p','sp-master-report-meta','Lista: '+report.file+' · Conferência: '+report.date),summary,
+   masterTable('1. Revisões obsoletas',['Folha','No SIGEM','Vigente'],report.obsolete.map(x=>[x.entry.sheet,x.revisions.join(', '),x.entry.rev])),
+   masterTable('2. Folhas não cadastradas',['Folha','Revisão vigente'],report.missing.map(x=>[x.sheet,x.rev])),
+   masterTable('3. Projetos cancelados',['Folha','Arquivos','Revisões / Formatos'],report.cancelled.map(x=>[x.entry.sheet,x.files.length,[...new Set(x.files.map(f=>f.revisao+' / '+f.formato.toUpperCase()))].join(', ')])));
+  if(readOnly){
+   body.append(make('p','sp-master-note','Histórico da última importação. A consulta não executa exclusões.'));
+   if(history?.exclusao_confirmada_em)body.append(make('p','sp-master-note','Exclusão confirmada em '+new Date(history.exclusao_confirmada_em).toLocaleString('pt-BR')+'. Arquivos removidos: '+(history.exclusao_resultado?.removed??0)+'.'));
+   el('sp-master-ok').textContent='Fechar';
+  }else{
+   body.append(make('p',report.cancelled.length?'sp-master-alert':'sp-master-note',report.cancelled.length?'Ao clicar em OK, você autoriza a exclusão definitiva de '+report.cancelled.reduce((n,x)=>n+x.files.length,0)+' arquivo(s) das folhas canceladas acima.':'Nenhum projeto será excluído nesta importação.'));
+   el('sp-master-ok').textContent='OK';
+  }
+  el('sp-master-download').disabled=false;el('sp-master-ok').disabled=false;
+  masterPopup(true);
+ }
+ async function openLastMaster(){
+  try{
+   const history=await latestMasterHistory();
+   if(!history){alert('Ainda não existe uma Lista Mestra salva para esta obra. Importe uma planilha para iniciar o histórico.');return;}
+   masterPending=null;masterHistoryId=null;
+   showMasterReport(history.dados,true,history);
+  }catch(error){alert('Não foi possível consultar a última atualização: '+error.message);}
+ }
+ function managerPdf(){
+  if(!selectedWork){alert('Selecione uma obra.');return;}
+  if(!window.jspdf?.jsPDF){alert('Gerador PDF indisponível. Atualize a página.');return;}
+  const generate=async()=>{
+   const history=await latestMasterHistory(),doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});
+   if(typeof doc.autoTable!=='function')throw Error('Módulo de tabelas indisponível.');
+   const clean=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+   const data=records.slice(),disciplines=[...new Set(data.map(r=>r.disciplina))].sort(),files=data.length;
+   const sheets=new Set(data.map(r=>r.codigo_folha));
+   const formats={pdf:data.filter(r=>r.formato==='pdf').length,dwg:data.filter(r=>r.formato==='dwg').length,dxf:data.filter(r=>r.formato==='dxf').length};
+   const bySheet=new Map();for(const r of data){if(!bySheet.has(r.codigo_folha))bySheet.set(r.codigo_folha,[]);bySheet.get(r.codigo_folha).push(r);}
+   const revised=[...bySheet].filter(([,items])=>new Set(items.map(r=>r.revisao)).size>1);
+   doc.setFillColor(12,47,72);doc.rect(0,0,210,39,'F');doc.setTextColor(255);doc.setFontSize(17);doc.setFont('helvetica','bold');doc.text('SIGEM OBRAS | SPOBRAS',15,18);doc.setFontSize(11);doc.text('RELATORIO GERENCIAL DE PROJETOS',15,28);
+   doc.setTextColor(35,61,77);doc.setFontSize(9);doc.setFont('helvetica','normal');
+   doc.text(doc.splitTextToSize(clean('Obra: '+(selectedWork.nome||selectedWork.codigo||selectedWork.id)),180),15,47);
+   doc.text('Emitido em: '+new Date().toLocaleString('pt-BR'),15,56);
+   doc.autoTable({startY:64,head:[['Indicador','Quantidade']],body:[['Arquivos cadastrados',files],['Folhas distintas',sheets.size],['Disciplinas com projetos',disciplines.length],['Arquivos PDF',formats.pdf],['Arquivos DWG',formats.dwg],['Arquivos DXF',formats.dxf],['Folhas com multiplas revisoes',revised.length]],theme:'grid',headStyles:{fillColor:[17,77,99]},styles:{fontSize:9}});
+   const table=(title,head,body)=>{let y=(doc.lastAutoTable?.finalY||65)+12;if(y>252){doc.addPage();y=22;}doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(12,47,72);doc.text(clean(title),15,y);doc.autoTable({startY:y+4,head:[head],body:body.length?body:[['Nenhum registro',...head.slice(1).map(()=>'')]],theme:'grid',headStyles:{fillColor:[17,77,99]},styles:{fontSize:8,overflow:'linebreak'},margin:{left:15,right:15,bottom:18}});};
+   table('Projetos por disciplina',['Disciplina','Arquivos','Folhas'],disciplines.map(d=>[clean(d+' - '+DISC[d]),data.filter(r=>r.disciplina===d).length,new Set(data.filter(r=>r.disciplina===d).map(r=>r.codigo_folha)).size]));
+   table('Distribuicao por fase',['Fase','Arquivos','Folhas'],[4,5,6].map(f=>[clean(PHASE[f]),data.filter(r=>r.fase===f).length,new Set(data.filter(r=>r.fase===f).map(r=>r.codigo_folha)).size]));
+   table('Folhas com mais de uma revisao',['Folha','Revisoes cadastradas'],revised.sort((a,b)=>a[0].localeCompare(b[0],'pt-BR',{numeric:true})).map(([sheet,items])=>[sheet,[...new Set(items.map(r=>r.revisao))].sort().join(', ')]));
+   if(history){
+    const x=history.dados;
+    table('Ultima Lista Mestra: '+history.arquivo_nome,['Indicador','Resultado'],[['Importada em',new Date(history.importado_em).toLocaleString('pt-BR')],['Folhas na lista',x.total],['Revisoes obsoletas na comparacao',x.obsolete.length],['Folhas ausentes na comparacao',x.missing.length],['Folhas canceladas na comparacao',x.cancelled.length],['Exclusao confirmada',history.exclusao_confirmada_em?'Sim':'Nao']]);
+    table('Pendencias de revisao da ultima conferencia',['Folha','SIGEM na importacao','Revisao vigente'],x.obsolete.map(o=>[o.entry.sheet,o.revisions.join(', '),o.entry.rev]));
+    table('Folhas ausentes na ultima conferencia',['Folha','Revisao vigente'],x.missing.map(o=>[o.sheet,o.rev]));
+    table('Cancelamentos identificados na ultima conferencia',['Folha','Arquivos identificados'],x.cancelled.map(o=>[o.entry.sheet,o.files.length]));
+   }else table('Lista Mestra',['Situacao','Informacao'],[['Sem importacao registrada','Importe uma Lista Mestra para analisar revisoes vigentes']]);
+   const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(100);doc.text('SIGEM Obras - SPOBRAS | Pagina '+i+' de '+pages,15,290);}
+   doc.save('SIGEM_SPOBRAS_Relatorio_Gerencial_'+new Date().toISOString().slice(0,10)+'.pdf');
+  };
+  generate().catch(e=>alert('Não foi possível gerar o relatório: '+e.message));
+ }
  function masterTable(title,headers,rows){
   const section=make('section','sp-master-section'),heading=make('h4','',title);section.append(heading);
   if(!rows.length){section.append(make('p','sp-master-empty','Nenhuma ocorrência identificada.'));return section;}
@@ -331,18 +400,11 @@
    missing.sort(orderMaster);
    cancelled.sort(orderMaster);
    masterReport={obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:file.name,date:new Date().toLocaleString('pt-BR'),total:master.size,registered:all.length,obsolete,missing,cancelled};
-   const body=el('sp-master-results');body.replaceChildren();
-   const summary=make('div','sp-master-summary-grid');
-   for(const [label,value] of [['Folhas analisadas',master.size],['Revisões obsoletas',obsolete.length],['Folhas ausentes',missing.length],['Folhas canceladas',cancelled.length]]){
-    const card=make('div','sp-master-stat');card.append(make('strong','',String(value)),make('span','',label));summary.append(card);
-   }
-   body.append(make('p','sp-master-report-meta','Lista: '+file.name+' · Conferência: '+masterReport.date),summary,
-    masterTable('1. Revisões obsoletas',['Folha','No SIGEM','Vigente'],obsolete.map(x=>[x.entry.sheet,x.revisions.join(', '),x.entry.rev])),
-    masterTable('2. Folhas não cadastradas',['Folha','Revisão vigente'],missing.map(x=>[x.sheet,x.rev])),
-    masterTable('3. Projetos cancelados',['Folha','Arquivos','Revisões / Formatos'],cancelled.map(x=>[x.entry.sheet,x.files.length,[...new Set(x.files.map(f=>f.revisao+' / '+f.formato.toUpperCase()))].join(', ')])));
-   if(cancelled.length)body.append(make('p','sp-master-alert','Ao clicar em OK, você autoriza a exclusão definitiva de '+cancelled.reduce((n,x)=>n+x.files.length,0)+' arquivo(s) das folhas canceladas acima.'));
-   else body.append(make('p','sp-master-note','Nenhum projeto será excluído nesta importação.'));
-   el('sp-master-download').disabled=false;
+   const snapshot={...masterReport,cancelled:cancelled.map(x=>({entry:x.entry,files:x.files.map(f=>({id:f.id,nome_arquivo:f.nome_arquivo,formato:f.formato,revisao:f.revisao,storage_path:f.storage_path}))}))};
+   const {data:saved,error:saveError}=await db.from('spobras_lista_mestra_historico').insert({obra_id:obra,arquivo_nome:file.name,importado_por:currentUser.id,dados:snapshot}).select('id').single();
+   if(saveError)throw Error('Não foi possível salvar a última Lista Mestra: '+saveError.message);
+   masterHistoryId=saved.id;
+   showMasterReport(masterReport,false);
    masterPending={obra,cancelled};
    el('sp-master-ok').disabled=false;
    el('sp-master-ok').textContent='OK';
@@ -352,7 +414,8 @@
   finally{masterBusy=false;btn.disabled=false;btn.textContent='↑ Importar e comparar Lista Mestra';}
  }
  async function approveMaster(){
-  if(masterBusy||!masterPending)return;
+  if(masterBusy)return;
+  if(!masterPending){masterPopup(false);return;}
   const pending=masterPending,btn=el('sp-master-ok'),body=el('sp-master-results');
   if(selectedWork?.id!==pending.obra){body.append(make('p','sp-master-error','A obra selecionada mudou. A exclusão foi bloqueada.'));return;}
   masterBusy=true;btn.disabled=true;btn.textContent='Excluindo cancelados...';
@@ -377,6 +440,10 @@
      }catch(e){failures.push(r.storage_path+': '+e.message);}
     }
    }
+   if(masterHistoryId){
+    const {error:historyError}=await db.from('spobras_lista_mestra_historico').update({exclusao_confirmada_em:new Date().toISOString(),exclusao_resultado:{removed,failures}}).eq('id',masterHistoryId).eq('obra_id',pending.obra);
+    if(historyError)body.append(make('p','sp-master-error','Atenção: não foi possível registrar a confirmação no histórico: '+historyError.message));
+   }
    if(failures.length){
     body.append(make('p','sp-master-error','Exclusão parcial: '+removed+' arquivo(s) removido(s). Falhas: '+failures.length+'.'));
     const list=make('ul','sp-master-items');for(const f of failures)list.append(make('li','',f));body.append(list);
@@ -391,6 +458,8 @@
   finally{masterBusy=false;if(masterPending){btn.disabled=false;btn.textContent='OK';}}
  }
  el('sp-master-import')?.addEventListener('click',()=>importMaster());
+ el('sp-manager-report')?.addEventListener('click',managerPdf);
+ el('sp-last-master')?.addEventListener('click',openLastMaster);
  el('sp-master-ok')?.addEventListener('click',()=>approveMaster());
  el('sp-master-download')?.addEventListener('click',()=>downloadMasterReport());
 
