@@ -98,3 +98,34 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 
 /* Fase 2: painel de indexação */
 .idx-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}.idx-actions input{flex:1;min-width:210px;padding:12px;border:1px solid #ccdbe7;border-radius:8px}.idx-list{max-height:560px;overflow:auto}.idx-item{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 2px;border-bottom:1px solid #e4edf4}.idx-item strong{display:block;font-size:13px;overflow-wrap:anywhere}.idx-item small{display:block;color:#647b91;margin-top:5px}.idx-item button{padding:8px 12px;flex-shrink:0}.idx-error{color:#a33333!important}.idx-result{padding:14px 0;border-bottom:1px solid #e4edf4}.idx-result strong,.idx-result small{display:block}.idx-result small{color:#647b91;margin-top:4px}.idx-result p{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+
+
+/* Pesquisa documental por arquivo e visualizador de ocorrências */
+.idx-search-summary{font-size:13px;color:#567087;margin:8px 0 16px}
+.idx-doc-result{padding:14px 4px;border-bottom:1px solid #e2eaf0;display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.idx-doc-open{border:0;background:none;color:#096c80;text-align:left;font-weight:700;font-size:15px;padding:3px 0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.idx-doc-open:hover{color:#054655}
+.idx-doc-result small{color:#637e91}
+.idx-viewer{position:fixed;inset:0;z-index:99999;background:rgba(5,24,39,.72);display:flex;align-items:center;justify-content:center;padding:14px}
+.idx-viewer.hidden{display:none}
+.idx-view-shell{background:#fff;border-radius:12px;width:min(1200px,98vw);height:min(95vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px #0004}
+.idx-view-header,.idx-view-nav{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid #dce5eb}
+.idx-view-header{justify-content:space-between;color:#143b51}
+.idx-view-header strong{overflow-wrap:anywhere}
+.idx-view-nav{background:#f5f9fb}
+#idx-view-counter{font-weight:700;color:#123f55}
+#idx-view-position{color:#587589;font-size:13px;margin-left:auto}
+.idx-view-body{flex:1;overflow:auto;padding:20px;background:#e9eff3;text-align:center}
+.idx-pdf-page{position:relative;margin:0 auto 18px;width:max-content;max-width:none;background:white;box-shadow:0 2px 12px #0002}
+.idx-pdf-page canvas{display:block}
+.idx-pdf-textlayer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.idx-pdf-text{position:absolute;white-space:pre;color:transparent;line-height:1;transform-origin:0 0}
+.idx-pdf-hit{background:rgba(255,227,55,.35)}
+.idx-pdf-text mark{background:#ffe100;color:transparent}
+.idx-view-excerpt,.idx-excel-hit{background:#fff;padding:18px;border-radius:8px;text-align:left;margin:12px auto;max-width:950px;line-height:1.7;overflow-wrap:anywhere}
+.idx-view-excerpt p,.idx-excel-hit p{white-space:pre-wrap}
+.idx-view-body mark{background:#ffe100;color:#222;padding:1px 2px;border-radius:2px}
+.idx-view-body mark.idx-mark-active{background:#ffdb00;outline:2px solid #d68d00}
+.idx-view-body h4{text-align:left;max-width:950px;margin:18px auto 8px}
+.idx-excel-row{text-align:left;max-width:950px;margin:0 auto;padding:12px;background:#fff;border-bottom:1px solid #e2eaf0;overflow-wrap:anywhere}
+@media(max-width:650px){.idx-viewer{padding:0}.idx-view-shell{width:100vw;height:100dvh;border-radius:0}.idx-view-header,.idx-view-nav{padding:10px}.idx-view-body{padding:10px}}
