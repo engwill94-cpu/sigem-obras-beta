@@ -1,6 +1,7 @@
 'use strict';
 (function(){
 const el=id=>document.getElementById(id);
+const isExcel=r=>/\.(xls|xlsx|xlsm)$/i.test(r.nome_arquivo||'');
 const names={documentos:'Documentos',projetos_spobras:'Projetos SPOBRAS',medicoes_arquivos:'Medições',criterios_medicao_arquivos:'Critérios de medição',aditamentos_arquivos:'Aditamento',prateleiras_arquivos:'Prateleiras'};
 let records=[],busy=false,batchRunning=false,batchStop=false,watchdogBusy=false;
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,7 +14,7 @@ async function load(showFeedback=false){
  const counts={};for(const r of records)counts[r.status]=(counts[r.status]||0)+1;
  el('idx-counts').textContent=records.length+' arquivo(s) · '+(counts.concluido||0)+' concluído(s) · '+(counts.pendente||0)+' pendente(s) · '+(counts.falhou||0)+' falha(s) · '+(counts.processando||0)+' processando';
  if(showFeedback)status('Situação atualizada às '+new Date().toLocaleTimeString('pt-BR')+'.');
- el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+(r.checkpoint_total?' · '+r.checkpoint_unidade+'/'+r.checkpoint_total+' '+(r.origem_tabela==='medicoes_arquivos'?'unidades':'páginas/abas'):'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'?'<button type="button" data-ocr-id="'+escape(r.id)+'">Reprocessar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
+ el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+(isExcel(r)?' aba(s)':' página(s)'):'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+(r.checkpoint_total?' · '+r.checkpoint_unidade+'/'+r.checkpoint_total+' '+(isExcel(r)?'abas':'páginas'):'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'?'<button type="button" data-ocr-id="'+escape(r.id)+'">Reprocessar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
  el('idx-list').querySelectorAll('[data-index-id]').forEach(b=>b.addEventListener('click',()=>process(b.dataset.indexId)));
  el('idx-list').querySelectorAll('[data-ocr-id]').forEach(b=>b.addEventListener('click',()=>aplicarOcr(b.dataset.ocrId)));
 }
@@ -47,11 +48,11 @@ async function search(){
  const term=el('idx-query').value.trim();if(!term){status('Digite um termo para pesquisar.');return;}
  if(term.length>120){status('Use uma consulta com até 120 caracteres.');return;}
  status('Pesquisando...');el('idx-results').textContent='';
- const {data,error}=await db.from('documento_trechos').select('indexacao_id,pagina,aba,conteudo').eq('obra_id',selectedWork.id).textSearch('busca',term,{type:'websearch',config:'portuguese'}).limit(30);
+ const {data,error}=await db.from('documento_trechos').select('indexacao_id,pagina,aba,celula_inicio,conteudo').eq('obra_id',selectedWork.id).textSearch('busca',term,{type:'websearch',config:'portuguese'}).limit(30);
  if(error){status('Pesquisa indisponível: '+error.message);return;}
  const byId=new Map(records.filter(r=>r.status==='concluido').map(r=>[r.id,r]));
  const valid=(data||[]).filter(t=>byId.has(t.indexacao_id));
- el('idx-results').innerHTML=valid.length?valid.map(t=>'<article class="idx-result"><strong>'+escape(byId.get(t.indexacao_id)?.nome_arquivo||'Documento')+'</strong><small>'+(t.pagina?'Página '+t.pagina:t.aba?'Aba '+escape(t.aba):'Referência documental')+'</small><p>'+escape(t.conteudo.slice(0,700))+'</p></article>').join(''):'Nenhum trecho encontrado nos documentos já indexados.';
+ el('idx-results').innerHTML=valid.length?valid.map(t=>'<article class="idx-result"><strong>'+escape(byId.get(t.indexacao_id)?.nome_arquivo||'Documento')+'</strong><small>'+(t.pagina?'Página '+t.pagina:t.aba?'Aba '+escape(t.aba)+(t.celula_inicio?' · célula '+escape(t.celula_inicio):''):'Referência documental')+'</small><p>'+escape(t.conteudo.slice(0,700))+'</p></article>').join(''):'Nenhum trecho encontrado nos documentos já indexados.';
  status(valid.length+' resultado(s). Somente documentos concluídos participam da pesquisa.');
 }
 
