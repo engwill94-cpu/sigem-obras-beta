@@ -3,7 +3,10 @@
 (function(){
 const el=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state=null;
+let state=null,ocrWorkerPromise=null;
+async function ocrWorker(){if(!ocrWorkerPromise)ocrWorkerPromise=Tesseract.createWorker('por').catch(e=>{ocrWorkerPromise=null;throw e;});return ocrWorkerPromise;}
+function ocrWords(data){if(Array.isArray(data.words)&&data.words.length)return data.words.map(w=>({text:w.text||'',box:w.bbox})).filter(w=>w.box);if(data.tsv){return data.tsv.split(/\r?\n/).slice(1).map(line=>{const c=line.split('\t');return c.length>=12&&c[0]==='5'&&c[11]?.trim()?{text:c.slice(11).join('\t'),box:{x0:+c[6],y0:+c[7],x1:+c[6]+ +c[8],y1:+c[7]+ +c[9]}}:null;}).filter(Boolean);}return [];}
+
 const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function matches(s,q){const hay=fold(s),needle=fold(q);if(!needle)return [];const out=[];let pos=0;while((pos=hay.indexOf(needle,pos))>=0){out.push(pos);pos+=Math.max(1,needle.length);}return out;}
 function highlighted(s,q,selected=false){const hits=matches(s,q);if(!hits.length)return esc(s);let out='',pos=0;for(const n of hits){out+=esc(s.slice(pos,n))+'<mark class="'+(selected?'idx-mark-active':'')+'">'+esc(s.slice(n,n+q.length))+'</mark>';pos=n+q.length;}return out+esc(s.slice(pos));}
@@ -43,7 +46,7 @@ async function list(q,records,status){
  status(docs.length+' documento(s) encontrado(s).');
 }
 async function open(doc,q){
- ensure();close();const token={doc,q,hits:[],index:0,pdf:null,url:null};state=token;
+ ensure();close();const token={doc,q,hits:[],index:0,pdf:null,url:null,ocrCache:new Map(),renderId:0};state=token;
  el('idx-viewer').classList.remove('hidden');el('idx-view-title').textContent=doc.nome_arquivo;
  el('idx-view-body').textContent='Localizando ocorrências no documento...';updateNav();
  try{
@@ -69,7 +72,7 @@ async function open(doc,q){
 }
 async function move(delta){if(!state||!state.hits.length)return;state.index=(state.index+delta+state.hits.length)%state.hits.length;updateNav();await render();}
 async function render(){
- const s=state;if(!s)return;const body=el('idx-view-body');body.textContent='';
+ const s=state;if(!s)return;const renderId=++s.renderId;const body=el('idx-view-body');body.textContent='';
  const hit=s.hits[s.index];if(!hit){body.textContent='Nenhum trecho correspondente foi encontrado.';return;}
  const row=hit.row;
  el('idx-view-position').textContent=s.ext==='pdf'?'Página '+row.pagina:'Aba '+row.aba+(row.celula_inicio?' · '+row.celula_inicio:'');
@@ -80,14 +83,62 @@ async function render(){
   const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);wrap.appendChild(canvas);body.appendChild(wrap);
   await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;if(state!==s)return;
   const layer=document.createElement('div');layer.className='idx-pdf-textlayer';layer.style.width=viewport.width+'px';layer.style.height=viewport.height+'px';wrap.appendChild(layer);
-  const text=await page.getTextContent();
-  for(const item of text.items){if(!item.str)continue;const tr=pdfjsLib.Util.transform(viewport.transform,item.transform);const span=document.createElement('span');span.className='idx-pdf-text';span.style.left=tr[4]+'px';span.style.top=(tr[5]-Math.hypot(tr[2],tr[3]))+'px';span.style.fontSize=Math.hypot(tr[2],tr[3])+'px';span.textContent=item.str;const has=matches(item.str,s.q).length;if(has){span.innerHTML=highlighted(item.str,s.q,true);span.classList.add('idx-pdf-hit');}layer.appendChild(span);}
+  const text=await page.getTextContent();if(state!==s||renderId!==s.renderId)return;
+  const items=text.items.filter(item=>item.str&&item.str.trim());
+  const searchable=items.map(item=>item.str).join(' ');
+  const hasNativeMatch=matches(searchable,s.q).length>0;
+  if(hasNativeMatch){
+   for(const item of items){
+    const tr=pdfjsLib.Util.transform(viewport.transform,item.transform);
+    const span=document.createElement('span');span.className='idx-pdf-text';
+    span.style.left=tr[4]+'px';span.style.top=(tr[5]-Math.hypot(tr[2],tr[3]))+'px';
+    span.style.fontSize=Math.hypot(tr[2],tr[3])+'px';span.textContent=item.str;
+    if(matches(item.str,s.q).length){span.innerHTML=highlighted(item.str,s.q,true);span.classList.add('idx-pdf-hit');}
+    layer.appendChild(span);
+   }
+  }else{
+   const notice=document.createElement('div');notice.className='idx-ocr-notice';notice.textContent='Página sem texto pesquisável correspondente. Localizando a palavra na imagem por OCR...';body.appendChild(notice);
+   try{
+    let words=s.ocrCache.get(row.pagina);
+    if(!words){
+     if(!window.Tesseract)throw Error('Motor OCR indisponível');
+     const worker=await ocrWorker();
+     const result=await worker.recognize(canvas,{}, {text:true,tsv:true});
+     words=ocrWords(result.data);
+     s.ocrCache.set(row.pagina,words);
+    }
+    if(state!==s||renderId!==s.renderId)return;
+    notice.remove();
+    const selectedWords=words.filter(w=>matches(w.text,s.q).length);
+    for(const w of selectedWords){
+     const span=document.createElement('span');span.className='idx-ocr-box';
+     span.style.left=w.box.x0+'px';span.style.top=w.box.y0+'px';
+     span.style.width=Math.max(2,w.box.x1-w.box.x0)+'px';
+     span.style.height=Math.max(3,w.box.y1-w.box.y0)+'px';
+     layer.appendChild(span);
+    }
+    const pageHits=s.hits.filter(h=>h.row.pagina===row.pagina);
+    const ordinal=Math.max(0,pageHits.findIndex(h=>h===hit));
+    const active=selectedWords[Math.min(ordinal,selectedWords.length-1)];
+    if(active&&layer.children.length){
+     const target=layer.children[Math.min(ordinal,layer.children.length-1)];
+     target.classList.add('idx-ocr-box-active');
+     target.scrollIntoView({block:'center',behavior:'smooth'});
+    }else{
+     const note=document.createElement('div');note.className='idx-ocr-notice';
+     note.textContent='O OCR indexado encontrou o termo, mas não foi possível determinar sua posição nesta imagem. Confira o trecho destacado abaixo.';
+     body.appendChild(note);
+    }
+   }catch(e){if(state!==s||renderId!==s.renderId)return;notice.textContent='Não foi possível localizar visualmente o termo nesta página: '+e.message+'. Consulte o trecho indexado abaixo.';}
+  }
   const excerpt=document.createElement('div');excerpt.className='idx-view-excerpt';excerpt.innerHTML='<strong>Trecho indexado · página '+row.pagina+'</strong><p>'+highlighted(row.conteudo,s.q,true)+'</p>';body.appendChild(excerpt);
-  const marked=[...layer.querySelectorAll('mark')];
-  const pageHits=s.hits.filter(h=>h.row.pagina===row.pagina);
-  const ordinal=pageHits.findIndex(h=>h===hit);
-  const mark=marked[Math.min(Math.max(0,ordinal),Math.max(0,marked.length-1))];
-  if(mark){layer.querySelectorAll('mark').forEach(m=>m.classList.remove('idx-mark-active'));mark.classList.add('idx-mark-active');mark.scrollIntoView({block:'center',behavior:'smooth'});}
+  if(hasNativeMatch){
+   const marked=[...layer.querySelectorAll('mark')];
+   const pageHits=s.hits.filter(h=>h.row.pagina===row.pagina);
+   const ordinal=pageHits.findIndex(h=>h===hit);
+   const mark=marked[Math.min(Math.max(0,ordinal),Math.max(0,marked.length-1))];
+   if(mark){layer.querySelectorAll('mark').forEach(m=>m.classList.remove('idx-mark-active'));mark.classList.add('idx-mark-active');mark.scrollIntoView({block:'center',behavior:'smooth'});}
+  }
  }else{
   const card=document.createElement('article');card.className='idx-excel-hit';
   card.innerHTML='<strong>Aba: '+esc(row.aba||'Não identificada')+' · Célula: '+esc(row.celula_inicio||'—')+'</strong><p>'+highlighted(row.conteudo,s.q,true)+'</p>';
