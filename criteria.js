@@ -79,13 +79,14 @@ function render(){
   const detail=document.createElement('small');detail.textContent=ext(row.nome_arquivo).toUpperCase()+' · '+size(row.tamanho_bytes)+' · '+new Date(row.created_at).toLocaleString('pt-BR');
   info.append(name,detail);item.append(info);
   const actions=document.createElement('div');actions.className='med-file-actions';
-  for(const [label,action] of [['Visualizar','view'],['Baixar','download'],['Excluir','delete']]){
+  for(const [label,action] of [...(row.ocr_status?[]:[['Aplicar OCR','ocr']]),['Visualizar','view'],['Baixar','download'],['Excluir','delete']]){
    const b=document.createElement('button');b.type='button';b.textContent=label;b.className='secondary';b.onclick=()=>perform(row,action);actions.append(b);
   }
   item.append(actions);item.classList.toggle('active',selected===row.id);item.tabIndex=0;item.setAttribute('role','button');item.setAttribute('aria-label','Selecionar '+row.nome_arquivo+' para visualização rápida');item.onclick=e=>{if(e.target.closest('button'))return;preview(row);};item.onkeydown=e=>{if(e.target===item&&(e.key==='Enter'||e.key===' ')){e.preventDefault();preview(row);}};list.append(item);
  }
 }
 async function perform(row,action){
+ if(action==='ocr'){await applyExistingOcr(row);return;}
  if(action==='delete'){
   if(!confirm('Excluir definitivamente o arquivo "'+row.nome_arquivo+'"?'))return;
   const {error}=await db.from(TABLE).delete().eq('id',row.id).eq('obra_id',row.obra_id);
@@ -110,6 +111,18 @@ async function perform(row,action){
 function clearPreview(){previewSeq++;el('crit-preview-name').textContent='Nenhum documento selecionado';el('crit-preview-frame').removeAttribute('src');el('crit-preview-frame').classList.add('hidden');el('crit-preview-empty').classList.remove('hidden');}
 async function preview(row){const token=++previewSeq;selected=row.id;render();el('crit-preview-name').textContent=row.nome_arquivo;el('crit-preview-empty').textContent='Carregando PDF...';el('crit-preview-empty').classList.remove('hidden');el('crit-preview-frame').classList.add('hidden');const {data,error}=await db.storage.from(BUCKET).createSignedUrl(row.pdf_pesquisavel_path||row.storage_path,120);if(token!==previewSeq)return;if(error){msg('Erro ao visualizar: '+error.message);return;}el('crit-preview-frame').src=data.signedUrl+'#toolbar=1';el('crit-preview-frame').classList.remove('hidden');el('crit-preview-empty').classList.add('hidden');}
 function closeModal(){el('crit-modal').classList.add('hidden');el('crit-modal-frame').removeAttribute('src');if(modalBlobUrl){URL.revokeObjectURL(modalBlobUrl);modalBlobUrl=null;}}
+async function applyExistingOcr(row){
+ if(busy)return;busy=true;msg('Preparando OCR de '+row.nome_arquivo+'...');
+ try{
+  const {data:blob,error}=await db.storage.from(BUCKET).download(row.storage_path);if(error)throw error;
+  const file=new File([blob],row.nome_arquivo,{type:'application/pdf'}),processed=await preparePdf(file);
+  let searchablePath=null;
+  if(processed.file){searchablePath=row.obra_id+'/pesquisaveis/'+crypto.randomUUID()+'.pdf';const {error:uploadError}=await uploadStorage(searchablePath,processed.file);if(uploadError)throw uploadError;}
+  const {error:saveError}=await db.from(TABLE).update({pdf_pesquisavel_path:searchablePath,ocr_status:processed.status,ocr_detalhe:processed.detail}).eq('id',row.id).eq('obra_id',row.obra_id);
+  if(saveError){if(searchablePath)await db.storage.from(BUCKET).remove([searchablePath]);throw saveError;}
+  if(selected===row.id){selected=null;clearPreview();}await load();msg('OCR concluído: '+row.nome_arquivo+'. '+processed.detail);
+ }catch(e){msg('Falha no OCR: '+e.message);}finally{busy=false;}
+}
 async function upload(){
  if(busy||!selectedWork)return;
  const files=[...el('crit-files').files];if(!files.length){msg('Selecione arquivos.');return;}
