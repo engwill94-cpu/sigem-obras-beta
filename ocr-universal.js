@@ -17,7 +17,7 @@
   try{
    pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
    if(pdf.numPages>LIMIT_PAGES)throw Error('PDF acima de 80 páginas: aguarda processamento por partes.');
-   const paginas=[];
+   const paginas=[];let paginasOcr=0;
    for(let n=1;n<=pdf.numPages;n++){
     onProgress('OCR: página '+n+' de '+pdf.numPages+' — '+job.nome_arquivo);
     const page=await pdf.getPage(n),content=await page.getTextContent();
@@ -29,6 +29,7 @@
      try{
       await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
       if(!worker)worker=await Tesseract.createWorker('por');
+      paginasOcr++;
       const result=await worker.recognize(canvas);
       texto=result.data.text||'';
      }finally{canvas.width=0;canvas.height=0;}
@@ -38,7 +39,7 @@
    }
    if(!paginas.some(p=>p.texto.trim()))throw Error('Nenhum texto reconhecido pelo OCR.');
    onProgress('Gravando OCR no índice de pesquisa...');
-   const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{action:'salvar_ocr',id,paginas}});
+   const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{action:'salvar_ocr',id,paginas,metodo:paginasOcr?'pdf_ocr':'pdf_texto'}});
    if(error){let msg=error.message;try{msg=(await error.context?.json())?.error||msg;}catch{}throw Error(msg);}
    if(data?.status!=='concluido')throw Error(data?.error||'Não foi possível confirmar a indexação OCR.');
    return data;
