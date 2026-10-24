@@ -46,7 +46,7 @@ async function list(q,records,status){
  status(docs.length+' documento(s) encontrado(s).');
 }
 async function open(doc,q){
- ensure();close();const token={doc,q,hits:[],index:0,pdf:null,url:null,ocrCache:new Map(),renderId:0};state=token;
+ ensure();close();const token={doc,q,hits:[],index:0,pdf:null,url:null,ocrCache:new Map(),renderId:0,workbook:null,sheetCache:new Map()};state=token;
  el('idx-viewer').classList.remove('hidden');el('idx-view-title').textContent=doc.nome_arquivo;
  el('idx-view-body').textContent='Localizando ocorrências no documento...';updateNav();
  try{
@@ -66,11 +66,81 @@ async function open(doc,q){
    if(!window.pdfjsLib)throw Error('Leitor de PDF indisponível.');
    token.pdf=await pdfjsLib.getDocument({url:token.url}).promise;
   }
+  if(ext==='xls'||ext==='xlsx'||ext==='xlsm'){
+   if(!window.XLSX)throw Error('Leitor Excel indisponível.');
+   el('idx-view-body').textContent='Carregando planilha original. Arquivos grandes podem demorar...';
+   const {data:file,error:downloadError}=await db.storage.from(source.storage_bucket).download(source.storage_path);
+   if(downloadError)throw downloadError;
+   const buffer=await file.arrayBuffer();if(state!==token)return;
+   token.workbook=XLSX.read(buffer,{type:'array',cellStyles:true,cellDates:true,cellFormula:true});
+  }
   if(state!==token)return;
   updateNav();await render();
  }catch(e){if(state===token)el('idx-view-body').textContent='Não foi possível abrir o documento: '+e.message;}
 }
 async function move(delta){if(!state||!state.hits.length)return;state.index=(state.index+delta+state.hits.length)%state.hits.length;updateNav();await render();}
+function excelCellText(c){if(!c)return '';if(c.w!=null)return String(c.w);if(c.v!=null)return String(c.v);return '';}
+function excelStyle(c){
+ const style=[];const z=c?.s;if(!z||typeof z!=='object')return '';
+ const color=x=>x?.rgb&&/^[A-Fa-f0-9]{6,8}$/.test(x.rgb)?'#'+x.rgb.slice(-6):null;
+ const fill=color(z.fgColor||z.bgColor);if(fill)style.push('background-color:'+fill);
+ const font=z.font;if(font){if(font.bold)style.push('font-weight:bold');if(font.italic)style.push('font-style:italic');const fc=color(font.color);if(fc)style.push('color:'+fc);if(font.sz&&font.sz>=7&&font.sz<=30)style.push('font-size:'+font.sz+'pt');}
+ if(z.alignment?.horizontal&&['left','right','center'].includes(z.alignment.horizontal))style.push('text-align:'+z.alignment.horizontal);
+ return style.join(';');
+}
+function excelRender(s,hit,body){
+ const wb=s.workbook,row=hit.row,name=row.aba;
+ const sheet=wb.Sheets[name];
+ if(!sheet){body.textContent='Aba '+name+' não encontrada no arquivo original.';return;}
+ const ref=sheet['!ref'];if(!ref){body.textContent='Aba vazia.';return;}
+ const range=XLSX.utils.decode_range(ref),maxCol=Math.min(range.e.c,250),maxRow=range.e.r;
+ let target=null;const hinted=row.celula_inicio;
+ if(hinted&&/^[A-Z]+\d+$/i.test(hinted)){const pos=XLSX.utils.decode_cell(hinted.toUpperCase());if(matches(excelCellText(sheet[hinted.toUpperCase()]),s.q).length)target=pos;}
+ if(!target){
+  const candidates=[];
+  for(let r=range.s.r;r<=maxRow;r++){
+   for(let c=range.s.c;c<=maxCol;c++){
+    const cell=sheet[XLSX.utils.encode_cell({r,c})];
+    if(matches(excelCellText(cell),s.q).length)candidates.push({r,c});
+   }
+   if(candidates.length>2000)break;
+  }
+  const pageHits=s.hits.filter(h=>h.row.aba===name);
+  const ordinal=Math.max(0,pageHits.findIndex(h=>h===hit));
+  target=candidates[Math.min(ordinal,candidates.length-1)]||null;
+ }
+ const center=target?.r??Math.min(range.s.r,maxRow),startRow=Math.max(range.s.r,center-25),endRow=Math.min(maxRow,center+35);
+ const startCol=range.s.c,endCol=Math.min(maxCol,Math.max(startCol+14,target?.c??startCol+14));
+ const panel=document.createElement('div');panel.className='idx-sheet-panel';
+ const header=document.createElement('div');header.className='idx-sheet-info';
+ header.textContent='Aba: '+name+' · Linhas '+(startRow+1)+'–'+(endRow+1)+' de '+(maxRow+1)+(target?' · Destaque na célula '+XLSX.utils.encode_cell(target):' · Termo não localizado diretamente nas células');
+ panel.appendChild(header);
+ const scroller=document.createElement('div');scroller.className='idx-sheet-scroll';
+ const table=document.createElement('table');table.className='idx-sheet-table';
+ const colgroup=document.createElement('colgroup');const col0=document.createElement('col');col0.style.width='48px';colgroup.appendChild(col0);
+ for(let c=startCol;c<=endCol;c++){const col=document.createElement('col');const w=sheet['!cols']?.[c];col.style.width=Math.max(55,Math.min(430,Math.round((w?.wpx||((w?.wch||12)*7+8)))))+'px';colgroup.appendChild(col);}table.appendChild(colgroup);
+ const head=document.createElement('thead'),hr=document.createElement('tr');hr.appendChild(document.createElement('th'));
+ for(let c=startCol;c<=endCol;c++){const th=document.createElement('th');th.textContent=XLSX.utils.encode_col(c);hr.appendChild(th);}head.appendChild(hr);table.appendChild(head);
+ const tbody=document.createElement('tbody');
+ const merged=sheet['!merges']||[],covered=new Set(),merges=new Map();
+ for(const m of merged){if(m.s.r<startRow||m.e.r>endRow||m.s.c<startCol||m.e.c>endCol)continue;merges.set(m.s.r+':'+m.s.c,m);for(let rr=m.s.r;rr<=m.e.r;rr++)for(let cc=m.s.c;cc<=m.e.c;cc++)if(rr!==m.s.r||cc!==m.s.c)covered.add(rr+':'+cc);}
+ for(let r=startRow;r<=endRow;r++){
+  const tr=document.createElement('tr'),rh=document.createElement('th');rh.textContent=r+1;tr.appendChild(rh);
+  const h=sheet['!rows']?.[r];if(h?.hpx)tr.style.height=Math.max(17,Math.min(130,h.hpx))+'px';
+  for(let c=startCol;c<=endCol;c++){
+   if(covered.has(r+':'+c))continue;
+   const td=document.createElement('td'),addr=XLSX.utils.encode_cell({r,c}),cell=sheet[addr],merge=merges.get(r+':'+c);
+   if(merge){td.rowSpan=merge.e.r-merge.s.r+1;td.colSpan=merge.e.c-merge.s.c+1;}
+   const value=excelCellText(cell);td.innerHTML=highlighted(value,s.q);
+   const style=excelStyle(cell);if(style)td.setAttribute('style',style);
+   if(target&&r===target.r&&c===target.c){td.classList.add('idx-sheet-selected');td.id='idx-sheet-focus';}
+   td.title=addr;tr.appendChild(td);
+  }tbody.appendChild(tr);
+ }
+ table.appendChild(tbody);scroller.appendChild(table);panel.appendChild(scroller);body.appendChild(panel);
+ const focus=panel.querySelector('#idx-sheet-focus');if(focus)focus.scrollIntoView({block:'center',inline:'center'});
+ const note=document.createElement('p');note.className='idx-sheet-note';note.textContent='Pré-visualização da planilha original com formatação parcial. Exibindo uma região da aba para manter a navegação rápida; gráficos e imagens incorporados não são reproduzidos nesta versão.';body.appendChild(note);
+}
 async function render(){
  const s=state;if(!s)return;const renderId=++s.renderId;const body=el('idx-view-body');body.textContent='';
  const hit=s.hits[s.index];if(!hit){body.textContent='Nenhum trecho correspondente foi encontrado.';return;}
@@ -139,6 +209,8 @@ async function render(){
    const mark=marked[Math.min(Math.max(0,ordinal),Math.max(0,marked.length-1))];
    if(mark){layer.querySelectorAll('mark').forEach(m=>m.classList.remove('idx-mark-active'));mark.classList.add('idx-mark-active');mark.scrollIntoView({block:'center',behavior:'smooth'});}
   }
+ }else if(s.workbook){
+  excelRender(s,hit,body);
  }else{
   const card=document.createElement('article');card.className='idx-excel-hit';
   card.innerHTML='<strong>Aba: '+esc(row.aba||'Não identificada')+' · Célula: '+esc(row.celula_inicio||'—')+'</strong><p>'+highlighted(row.conteudo,s.q,true)+'</p>';
