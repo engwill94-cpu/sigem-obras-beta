@@ -520,16 +520,17 @@ document.querySelectorAll('[data-work-tab]').forEach(b => {
     );
   });
 
-  for (const id of ['overview', 'contracts', 'documents', 'projects', 'measurements', 'addendums', 'coming']) {
+  for (const id of ['overview', 'contracts', 'documents', 'projects', 'measurements', 'addendums', 'shelves', 'coming']) {
     $('work-tab-' + id).classList.add('hidden');
   }
 
-  if (tab === 'overview' || tab === 'contracts' || tab === 'measurements' || tab === 'measurement-amendment' || isDocs || isProjects) {
-    $('work-tab-' + (isDocs?'documents':isProjects?'projects':tab==='measurement-amendment'?'addendums':tab)).classList.remove('hidden');
+  if (tab === 'overview' || tab === 'contracts' || tab === 'measurements' || tab === 'measurement-amendment' || tab === 'measurement-shelves' || isDocs || isProjects) {
+    $('work-tab-' + (isDocs?'documents':isProjects?'projects':tab==='measurement-amendment'?'addendums':tab==='measurement-shelves'?'shelves':tab)).classList.remove('hidden');
     if(isProjects){$('projects-section-title').textContent=projectNames[projectSection];$('projects-section-description').textContent=projectSection==='spobras'?'Organize, consulte e acompanhe os projetos técnicos da obra por disciplina.':'Área de projetos da obra selecionada. O cadastro de arquivos será configurado em uma próxima etapa.';document.querySelector('.sigem-projects').classList.toggle('sp-other-area',projectSection!=='spobras');if(projectSection==='spobras'&&typeof window.spobrasLoad==='function')window.spobrasLoad();}
     if (isDocs && typeof docsSelectSection==='function') docsSelectSection(docsSection);
     if (tab==='measurements' && typeof window.measurementsLoad==='function')window.measurementsLoad();
     if(tab==='measurement-amendment' && typeof window.addendumsLoad==='function')window.addendumsLoad();
+    if(tab==='measurement-shelves' && typeof window.shelvesLoad==='function')window.shelvesLoad();
   } else {
     $('work-tab-coming').classList.remove('hidden');
 
