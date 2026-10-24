@@ -2,7 +2,7 @@
 /* Motor comum de OCR do SIGEM: usado por bibliotecas atuais e futuras via sigemIndexarNovoArquivo. */
 (function(){
  const LIMIT_BYTES=12*1024*1024,LIMIT_PAGES=80;
- let active=false;
+ let active=false,queue=Promise.resolve();
  async function ocrDocumento(id,onProgress=()=>{}){
   if(active)return {status:'ocupado'};
   if(!db||!window.pdfjsLib||!window.Tesseract)throw Error('Bibliotecas de OCR indisponíveis.');
@@ -48,5 +48,9 @@
    active=false;
   }
  }
- window.sigemOcrDocumento=ocrDocumento;
+ window.sigemOcrDocumento=(id,onProgress)=>{
+  const next=queue.then(()=>ocrDocumento(id,onProgress));
+  queue=next.catch(()=>{});
+  return next;
+ };
 })();
