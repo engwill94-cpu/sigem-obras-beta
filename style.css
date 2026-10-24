@@ -61,8 +61,8 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 
 .sp-library-bottom{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.sp-library-bottom .sp-library-footnote{margin:0}.sp-download-all{background:#087e8c;color:#fff;border:0;border-radius:6px;padding:10px 14px;font-weight:700;white-space:nowrap;cursor:pointer}.sp-download-all:hover:not(:disabled){background:#066775}.sp-download-all:disabled{opacity:.6;cursor:wait}.sp-zip-notice{font-size:12px;color:#37687c;margin:8px 0 0}.sp-zip-notice:empty{display:none}
 
-/* Centralizar o botão de download em lote na base da biblioteca. */
-.sp-library-bottom{position:relative;justify-content:center;min-height:44px;padding-bottom:0}
-.sp-library-bottom .sp-library-footnote{position:absolute;left:0;top:50%;transform:translateY(-50%)}
-.sp-library-bottom .sp-download-all{margin:0 auto}
-@media(max-width:850px){.sp-library-bottom{flex-direction:column;gap:10px}.sp-library-bottom .sp-library-footnote{position:static;transform:none;text-align:center}}
+/* Botão alinhado à direita e centralizado verticalmente na faixa inferior. */
+.sp-library-bottom{display:flex;justify-content:space-between;align-items:center;min-height:52px;gap:12px}
+.sp-library-bottom .sp-library-footnote{position:static;transform:none;margin:0}
+.sp-library-bottom .sp-download-all{margin:0 0 0 auto;align-self:center}
+@media(max-width:850px){.sp-library-bottom{flex-direction:row;flex-wrap:wrap;justify-content:space-between}.sp-library-bottom .sp-library-footnote{text-align:left}}
