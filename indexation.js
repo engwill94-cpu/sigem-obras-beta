@@ -7,13 +7,13 @@ const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 function status(message){el('idx-status').textContent=message||'';}
 async function load(showFeedback=false){
  if(!selectedWork?.id||!db)return;
- const {data,error}=await db.from('documento_indexacao').select('id,origem_tabela,nome_arquivo,status,total_paginas,total_trechos,erro').eq('obra_id',selectedWork.id).order('criado_em',{ascending:true});
+ const {data,error}=await db.from('documento_indexacao').select('id,origem_tabela,nome_arquivo,status,total_paginas,total_trechos,checkpoint_unidade,checkpoint_total,erro').eq('obra_id',selectedWork.id).order('criado_em',{ascending:true});
  if(error){status('Não foi possível consultar a fila: '+error.message);return;}
  records=data||[];
  const counts={};for(const r of records)counts[r.status]=(counts[r.status]||0)+1;
  el('idx-counts').textContent=records.length+' arquivo(s) · '+(counts.concluido||0)+' concluído(s) · '+(counts.pendente||0)+' pendente(s) · '+(counts.falhou||0)+' falha(s) · '+(counts.processando||0)+' processando';
  if(showFeedback)status('Situação atualizada às '+new Date().toLocaleTimeString('pt-BR')+'.');
- el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'?'<button type="button" data-ocr-id="'+escape(r.id)+'">Reprocessar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
+ el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+(r.checkpoint_total?' · '+r.checkpoint_unidade+'/'+r.checkpoint_total+' '+(r.origem_tabela==='medicoes_arquivos'?'unidades':'páginas/abas'):'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'?'<button type="button" data-ocr-id="'+escape(r.id)+'">Reprocessar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
  el('idx-list').querySelectorAll('[data-index-id]').forEach(b=>b.addEventListener('click',()=>process(b.dataset.indexId)));
  el('idx-list').querySelectorAll('[data-ocr-id]').forEach(b=>b.addEventListener('click',()=>aplicarOcr(b.dataset.ocrId)));
 }
@@ -49,9 +49,10 @@ async function search(){
  status('Pesquisando...');el('idx-results').textContent='';
  const {data,error}=await db.from('documento_trechos').select('indexacao_id,pagina,aba,conteudo').eq('obra_id',selectedWork.id).textSearch('busca',term,{type:'websearch',config:'portuguese'}).limit(30);
  if(error){status('Pesquisa indisponível: '+error.message);return;}
- const byId=new Map(records.map(r=>[r.id,r]));
- el('idx-results').innerHTML=(data||[]).length?data.map(t=>'<article class="idx-result"><strong>'+escape(byId.get(t.indexacao_id)?.nome_arquivo||'Documento')+'</strong><small>'+(t.pagina?'Página '+t.pagina:t.aba?'Aba '+escape(t.aba):'Referência documental')+'</small><p>'+escape(t.conteudo.slice(0,700))+'</p></article>').join(''):'Nenhum trecho encontrado nos documentos já indexados.';
- status((data||[]).length+' resultado(s). Somente documentos já processados participam da pesquisa.');
+ const byId=new Map(records.filter(r=>r.status==='concluido').map(r=>[r.id,r]));
+ const valid=(data||[]).filter(t=>byId.has(t.indexacao_id));
+ el('idx-results').innerHTML=valid.length?valid.map(t=>'<article class="idx-result"><strong>'+escape(byId.get(t.indexacao_id)?.nome_arquivo||'Documento')+'</strong><small>'+(t.pagina?'Página '+t.pagina:t.aba?'Aba '+escape(t.aba):'Referência documental')+'</small><p>'+escape(t.conteudo.slice(0,700))+'</p></article>').join(''):'Nenhum trecho encontrado nos documentos já indexados.';
+ status(valid.length+' resultado(s). Somente documentos concluídos participam da pesquisa.');
 }
 
 async function verificarTravados(){
@@ -63,7 +64,7 @@ async function verificarTravados(){
   if(data?.interrompidos?.length){
    batchStop=true;
    await load();
-   status('Processamento interrompido: '+data.interrompidos.join(', ')+'. O conteúdo parcial foi removido. Clique em "Processar pendentes em lote" novamente para continuar os demais arquivos.');
+   status('Processamento interrompido: '+data.interrompidos.join(', ')+'. Os checkpoints confirmados foram preservados quando disponíveis. Clique em "Processar pendentes em lote" novamente para continuar os demais arquivos.');
    return true;
   }
   return false;
