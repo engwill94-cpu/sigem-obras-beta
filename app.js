@@ -498,7 +498,7 @@ function switchWorkTab(tab) {
   const projectSection=tab.startsWith('projects-')?tab.slice(9):null;
   const projectNames={spobras:'Projetos SPOBRAS',enel:'Projetos ENEL',telecom:'Projetos Telecom',comgas:'Projetos Comgás',diversos:'Projetos Diversos'};
   if(projectSection&&!projectNames[projectSection])return;
-  if(docsSection && !['licitacao','contratual','ambiental','licencas_alvaras'].includes(docsSection))return;
+  if(docsSection && !['licitacao','contratual','ambiental','licencas_alvaras','atas_reuniao'].includes(docsSection))return;
   currentWorkTab=tab;
   $('work-overview-header')?.classList.toggle('hidden',tab!=='overview');
   navSave();
