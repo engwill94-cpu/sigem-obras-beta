@@ -20,7 +20,7 @@
   if(downloadError)throw downloadError;
   if(ext==='pdf'&&file.size>MAX_PDF)throw Error('PDF acima de 120 MB.');
   if(ext!=='pdf'&&file.size>MAX_EXCEL)throw Error('Planilha acima de 250 MB.');
-  let pdf=null,worker=null,started=false,count=0,pages=0,checkpoint=0,method=ext==='pdf'?'pdf':'excel',lastPulse=0;
+  let pdf=null,worker=null,started=false,count=0,pages=0,checkpoint=0,method=ext==='pdf'?'pdf':'excel',lastPulse=0,heartbeat=null,heartbeatError=null,heartbeatPending=false;
   const buffer=[];
   async function pulse(){if(Date.now()-lastPulse>45000){await invoke({fase:'pulso',id});lastPulse=Date.now();}}
   async function flush(){
@@ -43,10 +43,18 @@
     if(!window.XLSX)throw Error('Leitor Excel indisponível.');
    }
    const resumed=await invoke({fase:'iniciar',id,metodo:method});started=true;lastPulse=Date.now();
+   heartbeat=setInterval(async()=>{
+    if(heartbeatPending||heartbeatError)return;
+    heartbeatPending=true;
+    try{await invoke({fase:'pulso',id});lastPulse=Date.now();}
+    catch(e){heartbeatError=e;console.warn('Heartbeat de indexação:',e);}
+    finally{heartbeatPending=false;}
+   },30000);
    checkpoint=resumed.checkpoint||0;count=resumed.trechos||0;
    if(checkpoint)notify('Retomando do checkpoint '+checkpoint+' — '+count+' trechos preservados.');
    if(pdf){
     for(let n=checkpoint+1;n<=pages;n++){
+     if(heartbeatError)throw heartbeatError;
      notify('PDF: página '+n+' de '+pages+' — '+name+' · '+count+' trechos gravados');
      const page=await pdf.getPage(n),content=await page.getTextContent();
      let text=content.items.map(x=>x.str||'').join(' ').trim();
@@ -73,12 +81,14 @@
     if(pages>1000)throw Error('Excel acima de 1.000 abas.');
     if(!pages)throw Error('Planilha sem abas.');
     for(let k=checkpoint;k<workbook.SheetNames.length;k++){
+     if(heartbeatError)throw heartbeatError;
      const sheetName=workbook.SheetNames[k],sheet=workbook.Sheets[sheetName];
      notify('Excel: aba '+(k+1)+' de '+pages+' — '+sheetName+' · '+count+' trechos');
      if(!sheet?.['!ref']){await invoke({fase:'checkpoint',id,unidade:k+1,total:pages});continue;}
      const range=XLSX.utils.decode_range(sheet['!ref']);
      if(range.e.r-range.s.r>1000000)throw Error('Aba excede um milhão de linhas.');
      for(let r=range.s.r;r<=range.e.r;r++){
+      if(heartbeatError)throw heartbeatError;
       const row=[];
       for(let c=range.s.c;c<=range.e.c;c++){
        const cell=sheet[XLSX.utils.encode_cell({r,c})];
@@ -101,7 +111,7 @@
   }catch(e){
    if(started){try{await invoke({fase:'falhar',id,erro:e.message});}catch(err){console.warn('Falha ao registrar interrupção:',err);}}
    throw e;
-  }finally{if(worker)await worker.terminate();if(pdf)await pdf.destroy();}
+  }finally{if(heartbeat)clearInterval(heartbeat);if(worker)await worker.terminate();if(pdf)await pdf.destroy();}
  }
  window.sigemProcessarArquivoGrande=(id,notify)=>{
   const next=queue.then(()=>run(id,notify));
