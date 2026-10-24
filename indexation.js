@@ -35,6 +35,39 @@ async function search(){
  el('idx-results').innerHTML=(data||[]).length?data.map(t=>'<article class="idx-result"><strong>'+escape(byId.get(t.indexacao_id)?.nome_arquivo||'Documento')+'</strong><small>'+(t.pagina?'Página '+t.pagina:t.aba?'Aba '+escape(t.aba):'Referência documental')+'</small><p>'+escape(t.conteudo.slice(0,700))+'</p></article>').join(''):'Nenhum trecho encontrado nos documentos já indexados.';
  status((data||[]).length+' resultado(s). Somente documentos já processados participam da pesquisa.');
 }
+
+window.sigemIndexarNovoArquivo=async function(table,obra){
+ try{
+  const {data,error}=await db.from('documento_indexacao').select('id').eq('obra_id',obra).eq('origem_tabela',table).eq('status','pendente').order('criado_em',{ascending:false}).limit(1);
+  if(error||!data?.length)return;
+  const {error:callError}=await db.functions.invoke('sigem-indexar-documento',{body:{id:data[0].id}});
+  if(callError)console.warn('Indexação pendente para processamento:',callError.message);
+ }catch(e){console.warn('Indexação pendente:',e);}
+};
+async function limparBibliotecas(){
+ if(busy||!selectedWork?.id)return;
+ if(!confirm('ATENÇÃO: excluir definitivamente todos os documentos das seis bibliotecas desta obra, inclusive arquivos sem registro? A capa e os cadastros administrativos serão preservados.'))return;
+ busy=true;el('idx-clean').disabled=true;el('idx-next').disabled=true;
+ const obra=selectedWork.id;
+ const buckets=['documentos-obras','projetos-spobras','medicoes-obras','criterios-medicao-obras','aditamentos-obras','prateleiras-obras'];
+ try{
+  let total=0;
+  for(const bucket of buckets){
+   status('Excluindo arquivos: '+bucket+'...');
+   const {data,error}=await db.functions.invoke('sigem-limpar-bibliotecas',{body:{obra_id:obra,bucket}});
+   if(error){let detail=error.message;try{detail=(await error.context?.json())?.error||detail;}catch{}throw Error(detail);}
+   total+=data?.removed||0;
+  }
+  status('Arquivos removidos. Limpando cadastros e índices...');
+  const {error}=await db.functions.invoke('sigem-limpar-bibliotecas',{body:{obra_id:obra,finalizar:true}});
+  if(error){let detail=error.message;try{detail=(await error.context?.json())?.error||detail;}catch{}throw Error(detail);}
+  status('Limpeza concluída: '+total+' arquivo(s) removido(s), registros e índices eliminados. A capa foi preservada.');
+  await load();
+ }catch(e){status('Limpeza interrompida: '+e.message+'. Não inicie novos uploads antes de concluir a limpeza.');}
+ finally{busy=false;el('idx-clean').disabled=false;el('idx-next').disabled=false;}
+}
+el('idx-clean')?.addEventListener('click',limparBibliotecas);
+
 window.indexacaoLoad=()=>{status('');el('idx-results').textContent='';load();};
 el('idx-refresh').addEventListener('click',load);
 el('idx-next').addEventListener('click',()=>process(null));
