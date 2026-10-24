@@ -146,6 +146,132 @@
  }
  el('sp-upload-button')?.addEventListener('click',()=>{message('Iniciando verificação dos arquivos...');upload().catch(error=>{const btn=el('sp-upload-button');btn.disabled=false;btn.textContent='↑ Verificar e cadastrar projetos';message('Não foi possível concluir a verificação: '+(error?.message||String(error)),true);});});
  
+
+ // LISTA MESTRA SPOBRAS — coluna A: código vigente; coluna J: Status.
+ let masterBusy=false,masterPending=null;
+ function masterCode(raw){
+  const s=String(raw??'').trim().toUpperCase().replace(/\\.(PDF|DWG|DXF)$/,'').replace(/\\s+/g,'');
+  const m=/^(DE|RT|MC)-VM-TV-01-([456])([A-Z])-00-([0-9]+)-([A-Z]|[1-9][0-9]*)$/.exec(s);
+  if(!m||!DISC[m[3]])return null;
+  return {sheet:m[1]+'-VM-TV-01-'+m[2]+m[3]+'-00-'+m[4],rev:m[5],code:s};
+ }
+ function masterPopup(show){el('sp-master-modal')?.classList.toggle('hidden',!show);}
+ function masterNotice(text,isError=false){const n=el('sp-master-notice');if(n){n.textContent=text;n.classList.toggle('sp-warning',isError);}}
+ function masterSection(title,items,describe){
+  const wrap=make('section','sp-master-section'),head=make('h4','',title);wrap.append(head);
+  if(!items.length){wrap.append(make('p','','Nenhuma ocorrência.'));return wrap;}
+  const ul=make('ul','sp-master-items');
+  for(const item of items){ul.append(make('li','',describe(item)));}
+  wrap.append(ul);return wrap;
+ }
+ async function importMaster(){
+  if(masterBusy)return;
+  if(!selectedWork||!currentUser){masterNotice('Selecione uma obra e entre no sistema.',true);return;}
+  const input=el('sp-master-file'),file=input?.files?.[0];
+  if(!file){masterNotice('Selecione a Lista Mestra em Excel.',true);return;}
+  if(!/\\.xlsx?$/i.test(file.name)){masterNotice('Formato inválido. Selecione .xls ou .xlsx.',true);return;}
+  if(file.size>15*1024*1024){masterNotice('A planilha excede 15 MB.',true);return;}
+  if(typeof XLSX==='undefined'){masterNotice('Leitor de Excel indisponível. Recarregue a página.',true);return;}
+  const btn=el('sp-master-import');masterBusy=true;btn.disabled=true;btn.textContent='Comparando projetos...';
+  try{
+   const obra=selectedWork.id;
+   const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
+   const sheet=wb.Sheets[wb.SheetNames[0]];
+   if(!sheet)throw Error('A planilha não contém uma aba válida.');
+   const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:false});
+   const master=new Map(),invalid=[],conflicts=[];
+   let candidates=0;
+   for(let i=0;i<rows.length;i++){
+    const row=rows[i],a=String(row[0]??'').trim();
+    if(!a)continue;
+    const parsed=masterCode(a);
+    if(!parsed){if(/^(DE|RT|MC)-/i.test(a))invalid.push('Linha '+(i+1)+': '+a);continue;}
+    candidates++;
+    const status=String(row[9]??'').trim().toLocaleLowerCase('pt-BR');
+    const canceled=status==='cancelado';
+    const prev=master.get(parsed.sheet);
+    if(prev&&(prev.rev!==parsed.rev||prev.canceled!==canceled))conflicts.push(parsed.sheet+' (linhas '+prev.line+' e '+(i+1)+')');
+    else master.set(parsed.sheet,{...parsed,canceled,line:i+1});
+   }
+   if(!candidates)throw Error('Nenhum código válido foi encontrado na coluna A da primeira aba.');
+   if(invalid.length||conflicts.length)throw Error('Importação bloqueada por inconsistências na Lista Mestra. '+(invalid.length?'Códigos inválidos: '+invalid.slice(0,6).join('; ')+'. ':'')+(conflicts.length?'Folhas conflitantes: '+conflicts.slice(0,6).join('; '):''));
+   // Consulta completa, inclusive quando houver mais de mil arquivos.
+   let all=[],offset=0;
+   while(true){
+    const {data,error}=await db.from('projetos_spobras').select('id,codigo_folha,revisao,formato,nome_arquivo,storage_path').eq('obra_id',obra).range(offset,offset+999);
+    if(error)throw error;
+    all.push(...(data||[]));if(!data||data.length<1000)break;offset+=1000;
+   }
+   if(selectedWork?.id!==obra)throw Error('A obra foi alterada. Importe novamente.');
+   const bySheet=new Map();
+   for(const r of all){if(!bySheet.has(r.codigo_folha))bySheet.set(r.codigo_folha,[]);bySheet.get(r.codigo_folha).push(r);}
+   const obsolete=[],missing=[],cancelled=[];
+   for(const [sheet,entry] of master){
+    const registered=bySheet.get(sheet)||[];
+    if(entry.canceled){if(registered.length)cancelled.push({entry,files:registered});continue;}
+    if(!registered.length){missing.push(entry);continue;}
+    const revisions=[...new Set(registered.map(r=>r.revisao))];
+    if(!revisions.includes(entry.rev))obsolete.push({entry,revisions});
+    else if(revisions.some(r=>r!==entry.rev))obsolete.push({entry,revisions:revisions.filter(r=>r!==entry.rev)});
+   }
+   const body=el('sp-master-results');body.replaceChildren();
+   const overview=make('p','sp-master-summary','Revisões obsoletas: '+obsolete.length+' · Folhas ausentes: '+missing.length+' · Folhas canceladas: '+cancelled.length);
+   body.append(overview,
+    masterSection('1. Revisões obsoletas',obsolete,x=>x.entry.sheet+' — SIGEM: '+x.revisions.join(', ')+' | Vigente: '+x.entry.rev),
+    masterSection('2. Folhas não cadastradas',missing,x=>x.code),
+    masterSection('3. Projetos cancelados — exclusão após OK',cancelled,x=>x.entry.sheet+' — '+x.files.length+' arquivo(s), todas as revisões e formatos'));
+   if(cancelled.length)body.append(make('p','sp-master-alert','Ao clicar em OK, você autoriza a exclusão definitiva dos arquivos das folhas canceladas listadas acima.'));
+   else body.append(make('p','sp-master-note','Nenhum projeto será excluído nesta importação.'));
+   masterPending={obra,cancelled};
+   el('sp-master-ok').disabled=false;
+   el('sp-master-ok').textContent='OK';
+   masterPopup(true);
+   masterNotice('Comparação concluída. Confira os resultados no popup.');
+  }catch(e){masterNotice('Lista Mestra não importada: '+e.message,true);}
+  finally{masterBusy=false;btn.disabled=false;btn.textContent='↑ Importar e comparar Lista Mestra';}
+ }
+ async function approveMaster(){
+  if(masterBusy||!masterPending)return;
+  const pending=masterPending,btn=el('sp-master-ok'),body=el('sp-master-results');
+  if(selectedWork?.id!==pending.obra){body.append(make('p','sp-master-error','A obra selecionada mudou. A exclusão foi bloqueada.'));return;}
+  masterBusy=true;btn.disabled=true;btn.textContent='Excluindo cancelados...';
+  const failures=[];let removed=0;
+  try{
+   for(const item of pending.cancelled){
+    // Nova consulta impede apagar registros adicionados depois da comparação sem revisão.
+    const {data:current,error:lookupError}=await db.from('projetos_spobras').select('id,storage_path').eq('obra_id',pending.obra).eq('codigo_folha',item.entry.sheet);
+    if(lookupError){failures.push(item.entry.sheet+': '+lookupError.message);continue;}
+    const approvedIds=new Set(item.files.map(f=>f.id));
+    if(current.some(r=>!approvedIds.has(r.id))){failures.push(item.entry.sheet+': novos arquivos detectados; importe a lista novamente.');continue;}
+    for(const r of current){
+     try{
+      // Remover primeiro o objeto físico e depois o registro; falhas ficam visíveis.
+      const {data:storageResult,error:storageError}=await db.storage.from(BUCKET).remove([r.storage_path]);
+      if(storageError)throw storageError;
+      if(!storageResult?.some(o=>o.name===r.storage_path||r.storage_path.endsWith('/'+o.name)))throw Error('Exclusão do arquivo não confirmada no armazenamento.');
+      const {data:deleted,error:deleteError}=await db.from('projetos_spobras').delete().eq('obra_id',pending.obra).eq('id',r.id).select('id');
+      if(deleteError)throw deleteError;
+      if(deleted?.length!==1)throw Error('Registro não removido do banco.');
+      removed++;
+     }catch(e){failures.push(r.storage_path+': '+e.message);}
+    }
+   }
+   if(failures.length){
+    body.append(make('p','sp-master-error','Exclusão parcial: '+removed+' arquivo(s) removido(s). Falhas: '+failures.length+'.'));
+    const list=make('ul','sp-master-items');for(const f of failures)list.append(make('li','',f));body.append(list);
+    masterNotice('Algumas exclusões falharam. Confira o popup e tente nova importação.',true);
+    // Não fechar em caso de erro; evitar executar exclusões novamente a partir de resultado antigo.
+    masterPending=null;btn.textContent='Falhas na exclusão — reimporte';btn.disabled=true;
+   }else{
+    masterPending=null;masterPopup(false);masterNotice('Lista Mestra conferida. '+removed+' arquivo(s) cancelado(s) removido(s) após confirmação.');
+   }
+   await load();
+  }catch(e){body.append(make('p','sp-master-error','Erro ao concluir: '+e.message));masterNotice('Falha na exclusão.',true);}
+  finally{masterBusy=false;if(masterPending){btn.disabled=false;btn.textContent='OK';}}
+ }
+ el('sp-master-import')?.addEventListener('click',()=>importMaster());
+ el('sp-master-ok')?.addEventListener('click',()=>approveMaster());
+
  el('sp-filter')?.addEventListener('change',render);
  el('sp-latest-only')?.addEventListener('change',render);
  try{render();}catch(error){message('Erro ao inicializar a biblioteca de projetos: '+(error?.message||String(error)),true);}
