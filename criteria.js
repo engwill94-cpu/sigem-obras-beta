@@ -142,7 +142,7 @@ async function upload(){
     const {error:storageError}=await uploadStorage(path,file);if(storageError)throw storageError;
     if(processed.file){searchablePath=id+'/pesquisaveis/'+crypto.randomUUID()+'.pdf';const {error:ocrError}=await uploadStorage(searchablePath,processed.file);if(ocrError)throw ocrError;}
     const {error:saveError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,storage_path:path,tamanho_bytes:file.size,formato:type,checksum_sha256:hash,uploaded_by:currentUser.id,pdf_pesquisavel_path:searchablePath,ocr_status:processed.status,ocr_detalhe:processed.detail});
-    if(saveError)throw saveError;added++;
+    if(saveError)throw saveError;window.sigemIndexarNovoArquivo?.('criterios_medicao_arquivos',id);added++;
    }catch(e){errors.push(file.name+': '+e.message);if(path)await db.storage.from(BUCKET).remove([path,...(searchablePath?[searchablePath]:[])]);}
   }
   el('crit-files').value='';await load();msg(added+' arquivo(s) cadastrado(s).'+(errors.length?' Falhas: '+errors.join('; '):''));
