@@ -65,8 +65,9 @@
     }
    }else{
     notify('Lendo estrutura Excel: '+name);
-    const workbook=XLSX.read(await file.arrayBuffer(),{type:'array',dense:true,cellDates:false,cellFormula:true});
+    const workbook=XLSX.read(await file.arrayBuffer(),{type:'array',dense:false,cellDates:false,cellFormula:true});
     pages=workbook.SheetNames.length;
+    if(pages>1000)throw Error('Excel acima de 1.000 abas.');
     if(!pages)throw Error('Planilha sem abas.');
     for(let k=0;k<workbook.SheetNames.length;k++){
      const sheetName=workbook.SheetNames[k],sheet=workbook.Sheets[sheetName];
