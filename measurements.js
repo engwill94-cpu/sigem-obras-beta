@@ -2,11 +2,12 @@
 (function(){
  const BUCKET='medicoes-obras',TABLE='medicoes_arquivos',MAX=50*1024*1024;
  const el=id=>document.getElementById(id);
- let rows=[],active='excel',workId=null,busy=false,deleteTarget=null,seq=0;
+ let rows=[],active='excel',workId=null,busy=false,deleteTarget=null,editTarget=null,seq=0;
  const size=n=>n<1048576?Math.max(1,Math.round(n/1024))+' KB':(n/1048576).toFixed(1)+' MB';
  const date=s=>new Date(s).toLocaleString('pt-BR');
  const ext=name=>name.split('.').pop().toLowerCase();
  const status=(message)=>{el('med-upload-status').textContent=message;};
+ const competence=s=>s?new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(s.slice(0,7)+'-01T00:00:00Z')).toUpperCase('pt-BR').replace(' DE ','/'):'Não informada';
  const fmt=f=>f==='pdf'?'PDF':f.toUpperCase();
  const make=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
  async function digest(file){const buffer=await file.arrayBuffer();const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',buffer));return [...bytes].map(n=>n.toString(16).padStart(2,'0')).join('');}
@@ -23,17 +24,17 @@
   for(const row of visible){
    const item=make('div','med-file-row'),icon=make('span','med-file-icon',row.formato==='pdf'?'▤':'▦');
    const info=make('div','med-file-info'),name=make('strong','',row.nome_arquivo),meta=make('small','',fmt(row.formato)+' · '+size(row.tamanho_bytes)+' · '+date(row.created_at));
-   info.append(name,meta);const actions=make('div','med-file-actions');
+   info.append(name,meta);const ref=make('div','med-file-competence');ref.append(make('span','','MÊS DE REFERÊNCIA'),make('strong','',competence(row.competencia)));const edit=make('button','med-ref-edit','Editar');edit.type='button';edit.addEventListener('click',()=>editCompetence(row));ref.append(edit);const actions=make('div','med-file-actions');
    if(row.formato==='pdf'){const view=make('button','','Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(row));actions.append(view);}
    const down=make('button','','Baixar');down.type='button';down.addEventListener('click',()=>download(row));actions.append(down);
    const del=make('button','med-delete','Excluir');del.type='button';del.addEventListener('click',()=>askDelete(row));actions.append(del);
-   item.append(icon,info,actions);list.append(item);
+   item.append(icon,info,ref,actions);list.append(item);
   }
  }
  async function load(){
   const id=selectedWork?.id,token=++seq;workId=id;rows=[];el('med-search').value='';status('');
   render();if(!id)return;
-  const {data,error}=await db.from(TABLE).select('id,obra_id,nome_arquivo,formato,tamanho_bytes,storage_path,checksum_sha256,uploaded_by,created_at').eq('obra_id',id).order('created_at',{ascending:false});
+  const {data,error}=await db.from(TABLE).select('id,obra_id,nome_arquivo,formato,tamanho_bytes,storage_path,checksum_sha256,uploaded_by,created_at,competencia').eq('obra_id',id).order('created_at',{ascending:false});
   if(token!==seq||selectedWork?.id!==id)return;
   if(error){status('Não foi possível consultar a biblioteca: '+error.message);return;}
   rows=data||[];render();
@@ -41,6 +42,7 @@
  async function upload(){
   if(busy||!selectedWork)return;
   const files=[...el('med-files').files];if(!files.length){status('Selecione pelo menos um arquivo.');return;}
+  const month=el('med-competence').value;if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){status('Informe o mês e ano de referência antes de cadastrar.');return;}
   const id=selectedWork.id;busy=true;el('med-upload').disabled=true;
   const failures=[];let added=0;
   try{
@@ -58,7 +60,7 @@
      const path=id+'/'+crypto.randomUUID()+'.'+type;
      const {error:storageError}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
      if(storageError)throw storageError;
-     const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id});
+     const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id,competencia:month+'-01'});
      if(insertError){await db.storage.from(BUCKET).remove([path]);throw insertError;}
      added++;
     }catch(error){failures.push(file.name+' — '+error.message);}
@@ -68,6 +70,9 @@
    status((added?added+' arquivo(s) cadastrado(s).':'Nenhum arquivo cadastrado.')+(failures.length?'\nNão cadastrados:\n'+failures.join('\n'):''));
   }finally{busy=false;el('med-upload').disabled=false;}
  }
+ function editCompetence(row){editTarget=row;el('med-edit-file').textContent=row.nome_arquivo;el('med-edit-month').value=row.competencia?.slice(0,7)||'';el('med-edit-status').textContent='';el('med-edit-competence').classList.remove('hidden');}
+ function closeEdit(){el('med-edit-competence').classList.add('hidden');editTarget=null;}
+ async function saveCompetence(){if(!editTarget||busy)return;const month=el('med-edit-month').value;if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){el('med-edit-status').textContent='Informe um mês válido.';return;}const row=editTarget;if(selectedWork?.id!==row.obra_id)return;busy=true;el('med-edit-save').disabled=true;try{const {error}=await db.from(TABLE).update({competencia:month+'-01'}).eq('id',row.id).eq('obra_id',row.obra_id);if(error)throw error;row.competencia=month+'-01';closeEdit();render();status('Referência atualizada.');}catch(error){el('med-edit-status').textContent=error.message;}finally{busy=false;el('med-edit-save').disabled=false;}}
  async function download(row){
   try{
    const {data,error}=await db.storage.from(BUCKET).download(row.storage_path);
@@ -107,5 +112,7 @@
  el('med-tab-pdf')?.addEventListener('click',()=>{active='pdf';render();});
  el('med-search')?.addEventListener('input',render);
  el('med-cancel')?.addEventListener('click',closeDelete);
+ el('med-edit-cancel')?.addEventListener('click',closeEdit);
+ el('med-edit-save')?.addEventListener('click',saveCompetence);
  el('med-delete-confirm')?.addEventListener('click',confirmDelete);
 })();
