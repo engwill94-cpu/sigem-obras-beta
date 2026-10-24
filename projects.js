@@ -164,6 +164,42 @@
   for(const item of items){ul.append(make('li','',describe(item)));}
   wrap.append(ul);return wrap;
  }
+
+ let masterReport=null;
+ function masterTable(title,headers,rows){
+  const section=make('section','sp-master-section'),heading=make('h4','',title);section.append(heading);
+  if(!rows.length){section.append(make('p','sp-master-empty','Nenhuma ocorrência identificada.'));return section;}
+  const container=make('div','sp-master-table-wrap'),table=make('table','sp-master-table'),thead=make('thead'),tr=make('tr');
+  for(const header of headers)tr.append(make('th','',header));
+  thead.append(tr);table.append(thead);
+  const tbody=make('tbody');
+  for(const row of rows){const line=make('tr');for(const cell of row)line.append(make('td','',String(cell??'')));tbody.append(line);}
+  table.append(tbody);container.append(table);section.append(container);return section;
+ }
+ function downloadMasterReport(){
+  if(!masterReport||typeof XLSX==='undefined')return;
+  const r=masterReport,wb=XLSX.utils.book_new();
+  function sheet(name,headers,rows,widths){
+   const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+   ws['!cols']=widths.map(w=>({wch:w}));
+   ws['!autofilter']={ref:'A1:'+XLSX.utils.encode_col(headers.length-1)+(rows.length+1)};
+   XLSX.utils.book_append_sheet(wb,ws,name);
+  }
+  sheet('Resumo',['SIGEM OBRAS — RELATÓRIO DE CONFERÊNCIA','Informação'],[
+   ['Empreendimento',r.obraNome],['Lista Mestra',r.file],['Data e hora',r.date],
+   ['Folhas na Lista Mestra',r.total],['Arquivos cadastrados na obra',r.registered],
+   ['Folhas com revisões obsoletas',r.obsolete.length],['Folhas não cadastradas',r.missing.length],
+   ['Folhas canceladas com arquivos',r.cancelled.length],
+   ['Arquivos sujeitos à exclusão',r.cancelled.reduce((n,x)=>n+x.files.length,0)],
+   ['Observação','Relatório gerado antes da confirmação de exclusão.']
+  ],[46,75]);
+  sheet('Revisões obsoletas',['Código da folha','Revisões no SIGEM (obsoletas)','Revisão vigente','Código vigente na Lista Mestra','Linha na Lista'],r.obsolete.map(x=>[x.entry.sheet,x.revisions.join(', '),x.entry.rev,x.entry.code,x.entry.line]),[39,30,19,48,16]);
+  sheet('Folhas ausentes',['Código da folha','Revisão vigente','Código vigente na Lista Mestra','Linha na Lista'],r.missing.map(x=>[x.sheet,x.rev,x.code,x.line]),[39,19,48,16]);
+  sheet('Projetos cancelados',['Código da folha','Revisão na Lista','Arquivos cadastrados','Revisões cadastradas','Formatos','Arquivos para exclusão','Linha na Lista'],r.cancelled.map(x=>[x.entry.sheet,x.entry.rev,x.files.length,[...new Set(x.files.map(f=>f.revisao))].join(', '),[...new Set(x.files.map(f=>f.formato.toUpperCase()))].join(', '),x.files.map(f=>f.nome_arquivo).join('; '),x.entry.line]),[39,18,22,30,19,90,16]);
+  const stamp=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,'SIGEM_SPOBRAS_Conferencia_Lista_Mestra_'+stamp+'.xlsx');
+ }
+
  async function importMaster(){
   if(masterBusy)return;
   if(!selectedWork||!currentUser){masterNotice('Selecione uma obra e entre no sistema.',true);return;}
@@ -174,6 +210,7 @@
   if(typeof XLSX==='undefined'){masterNotice('Leitor de Excel indisponível. Recarregue a página.',true);return;}
   const btn=el('sp-master-import');masterBusy=true;btn.disabled=true;btn.textContent='Comparando projetos...';
   try{
+   masterReport=null;el('sp-master-download').disabled=true;
    const obra=selectedWork.id;
    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
    const sheet=wb.Sheets[wb.SheetNames[0]];
@@ -214,14 +251,19 @@
     if(!revisions.includes(entry.rev))obsolete.push({entry,revisions});
     else if(revisions.some(r=>r!==entry.rev))obsolete.push({entry,revisions:revisions.filter(r=>r!==entry.rev)});
    }
+   masterReport={obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:file.name,date:new Date().toLocaleString('pt-BR'),total:master.size,registered:all.length,obsolete,missing,cancelled};
    const body=el('sp-master-results');body.replaceChildren();
-   const overview=make('p','sp-master-summary','Revisões obsoletas: '+obsolete.length+' · Folhas ausentes: '+missing.length+' · Folhas canceladas: '+cancelled.length);
-   body.append(overview,
-    masterSection('1. Revisões obsoletas',obsolete,x=>x.entry.sheet+' — SIGEM: '+x.revisions.join(', ')+' | Vigente: '+x.entry.rev),
-    masterSection('2. Folhas não cadastradas',missing,x=>x.code),
-    masterSection('3. Projetos cancelados — exclusão após OK',cancelled,x=>x.entry.sheet+' — '+x.files.length+' arquivo(s), todas as revisões e formatos'));
-   if(cancelled.length)body.append(make('p','sp-master-alert','Ao clicar em OK, você autoriza a exclusão definitiva dos arquivos das folhas canceladas listadas acima.'));
+   const summary=make('div','sp-master-summary-grid');
+   for(const [label,value] of [['Folhas analisadas',master.size],['Revisões obsoletas',obsolete.length],['Folhas ausentes',missing.length],['Folhas canceladas',cancelled.length]]){
+    const card=make('div','sp-master-stat');card.append(make('strong','',String(value)),make('span','',label));summary.append(card);
+   }
+   body.append(make('p','sp-master-report-meta','Lista: '+file.name+' · Conferência: '+masterReport.date),summary,
+    masterTable('1. Revisões obsoletas',['Folha','No SIGEM','Vigente'],obsolete.map(x=>[x.entry.sheet,x.revisions.join(', '),x.entry.rev])),
+    masterTable('2. Folhas não cadastradas',['Folha','Revisão vigente'],missing.map(x=>[x.sheet,x.rev])),
+    masterTable('3. Projetos cancelados',['Folha','Arquivos','Revisões / Formatos'],cancelled.map(x=>[x.entry.sheet,x.files.length,[...new Set(x.files.map(f=>f.revisao+' / '+f.formato.toUpperCase()))].join(', ')])));
+   if(cancelled.length)body.append(make('p','sp-master-alert','Ao clicar em OK, você autoriza a exclusão definitiva de '+cancelled.reduce((n,x)=>n+x.files.length,0)+' arquivo(s) das folhas canceladas acima.'));
    else body.append(make('p','sp-master-note','Nenhum projeto será excluído nesta importação.'));
+   el('sp-master-download').disabled=false;
    masterPending={obra,cancelled};
    el('sp-master-ok').disabled=false;
    el('sp-master-ok').textContent='OK';
@@ -271,6 +313,7 @@
  }
  el('sp-master-import')?.addEventListener('click',()=>importMaster());
  el('sp-master-ok')?.addEventListener('click',()=>approveMaster());
+ el('sp-master-download')?.addEventListener('click',()=>downloadMasterReport());
 
  el('sp-filter')?.addEventListener('change',render);
  el('sp-latest-only')?.addEventListener('change',render);
