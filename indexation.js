@@ -2,16 +2,17 @@
 (function(){
 const el=id=>document.getElementById(id);
 const names={documentos:'Documentos',projetos_spobras:'Projetos SPOBRAS',medicoes_arquivos:'Medições',criterios_medicao_arquivos:'Critérios de medição',aditamentos_arquivos:'Aditamento',prateleiras_arquivos:'Prateleiras'};
-let records=[],busy=false,batchRunning=false,batchStop=false;
+let records=[],busy=false,batchRunning=false,batchStop=false,watchdogBusy=false;
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function status(message){el('idx-status').textContent=message||'';}
-async function load(){
+async function load(showFeedback=false){
  if(!selectedWork?.id||!db)return;
  const {data,error}=await db.from('documento_indexacao').select('id,origem_tabela,nome_arquivo,status,total_paginas,total_trechos,erro').eq('obra_id',selectedWork.id).order('criado_em',{ascending:true});
  if(error){status('Não foi possível consultar a fila: '+error.message);return;}
  records=data||[];
  const counts={};for(const r of records)counts[r.status]=(counts[r.status]||0)+1;
- el('idx-counts').textContent=records.length+' arquivo(s) · '+(counts.concluido||0)+' concluído(s) · '+(counts.pendente||0)+' pendente(s) · '+(counts.falhou||0)+' falha(s)';
+ el('idx-counts').textContent=records.length+' arquivo(s) · '+(counts.concluido||0)+' concluído(s) · '+(counts.pendente||0)+' pendente(s) · '+(counts.falhou||0)+' falha(s) · '+(counts.processando||0)+' processando';
+ if(showFeedback)status('Situação atualizada às '+new Date().toLocaleTimeString('pt-BR')+'.');
  el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
  el('idx-list').querySelectorAll('[data-index-id]').forEach(b=>b.addEventListener('click',()=>process(b.dataset.indexId)));
 }
@@ -36,6 +37,24 @@ async function search(){
  status((data||[]).length+' resultado(s). Somente documentos já processados participam da pesquisa.');
 }
 
+async function verificarTravados(){
+ if(watchdogBusy||!selectedWork?.id)return false;
+ watchdogBusy=true;
+ try{
+  const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{action:'parar_travado',obra_id:selectedWork.id}});
+  if(error)throw error;
+  if(data?.interrompidos?.length){
+   batchStop=true;
+   await load();
+   status('Processamento interrompido: '+data.interrompidos.join(', ')+'. O conteúdo parcial foi removido. Clique em "Processar pendentes em lote" novamente para continuar os demais arquivos.');
+   return true;
+  }
+  return false;
+ }catch(e){console.warn('Verificação de documentos travados:',e);return false;}
+ finally{watchdogBusy=false;}
+}
+setInterval(()=>{if(selectedWork?.id)verificarTravados();},30000);
+
 async function batch(){
  if(busy||batchRunning||!selectedWork?.id)return;
  batchRunning=true;batchStop=false;
@@ -45,6 +64,8 @@ async function batch(){
  el('idx-next').disabled=true;
  let completed=0,failed=0;
  try{
+  await verificarTravados();
+  if(batchStop)return;
   await load();
   const pending=records.filter(r=>r.status==='pendente');
   const total=pending.length;
@@ -64,8 +85,9 @@ async function batch(){
     break;
    }
    await load();
+   if(await verificarTravados())break;
   }
-  status('Lote '+(batchStop?'pausado':'finalizado/interrompido')+': '+completed+' concluído(s), '+failed+' falha(s). Documentos pendentes permanecem na fila.');
+  if(!batchStop)status('Lote '+(batchStop?'pausado':'finalizado/interrompido')+': '+completed+' concluído(s), '+failed+' falha(s). Documentos pendentes permanecem na fila.');
  }finally{
   batchRunning=false;el('idx-batch').disabled=false;el('idx-pause').disabled=true;el('idx-next').disabled=false;await load();
  }
@@ -106,8 +128,8 @@ async function limparBibliotecas(){
 }
 el('idx-clean')?.addEventListener('click',limparBibliotecas);
 
-window.indexacaoLoad=()=>{status('');el('idx-results').textContent='';load();};
-el('idx-refresh').addEventListener('click',load);
+window.indexacaoLoad=()=>{status('');el('idx-results').textContent='';load().then(verificarTravados);};
+el('idx-refresh').addEventListener('click',async()=>{await load(true);await verificarTravados();});
 el('idx-next').addEventListener('click',()=>process(null));
 el('idx-find').addEventListener('click',search);
 el('idx-query').addEventListener('keydown',e=>{if(e.key==='Enter')search();});
