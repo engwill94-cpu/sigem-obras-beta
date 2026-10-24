@@ -13,7 +13,7 @@ async function load(showFeedback=false){
  const counts={};for(const r of records)counts[r.status]=(counts[r.status]||0)+1;
  el('idx-counts').textContent=records.length+' arquivo(s) · '+(counts.concluido||0)+' concluído(s) · '+(counts.pendente||0)+' pendente(s) · '+(counts.falhou||0)+' falha(s) · '+(counts.processando||0)+' processando';
  if(showFeedback)status('Situação atualizada às '+new Date().toLocaleTimeString('pt-BR')+'.');
- el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'&&/OCR necessário|sem camada textual/i.test(r.erro||'')?'<button type="button" data-ocr-id="'+escape(r.id)+'">Aplicar OCR</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
+ el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'?'<button type="button" data-ocr-id="'+escape(r.id)+'">Reprocessar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
  el('idx-list').querySelectorAll('[data-index-id]').forEach(b=>b.addEventListener('click',()=>process(b.dataset.indexId)));
  el('idx-list').querySelectorAll('[data-ocr-id]').forEach(b=>b.addEventListener('click',()=>aplicarOcr(b.dataset.ocrId)));
 }
@@ -21,7 +21,7 @@ async function aplicarOcr(id){
  if(busy||batchRunning)return;
  busy=true;el('idx-next').disabled=true;el('idx-batch').disabled=true;
  try{
-  const result=await window.sigemOcrDocumento(id,status);
+  const result=await window.sigemProcessarArquivoGrande(id,status);
   status(result?.status==='concluido'?'OCR concluído: '+result.trechos+' trechos pesquisáveis.':'OCR não realizado: '+(result?.status||'indisponível'));
  }catch(e){status('OCR não concluído: '+(e.message||e));}
  finally{busy=false;el('idx-next').disabled=false;el('idx-batch').disabled=false;await load();}
@@ -31,7 +31,8 @@ async function process(id){
  if(busy)return;
  busy=true;el('idx-next').disabled=true;status('Processando documento. Aguarde...');
  try{
-  const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:id?{id}:{}});
+  if(id){const result=await window.sigemProcessarArquivoGrande(id,status);status('Documento indexado: '+result.trechos+' trechos.');return;}
+  const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{}});
   if(error){let detail=error.message;try{const body=await error.context?.json();detail=body?.error||body?.message||detail;}catch{}throw Error(detail);}
   if(data?.status==='falhou'&&/OCR necessário|sem camada textual/i.test(data.erro||'')){
    const result=await window.sigemOcrDocumento(id||data.id,status);
@@ -90,15 +91,9 @@ async function batch(){
    const item=pending[i];
    status('Processamento em lote: '+(i+1)+' de '+total+' — '+item.nome_arquivo+' (concluídos: '+completed+', falhas: '+failed+').');
    try{
-    const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{id:item.id}});
-    if(error){let message=error.message;try{message=(await error.context?.json())?.error||message;}catch{}throw Error(message);}
+    const data=await window.sigemProcessarArquivoGrande(item.id,status);
     if(data?.status==='concluido')completed++;
-    else if(data?.status==='falhou'){
-     if(/OCR necessário|sem camada textual/i.test(data.erro||'')){
-      try{const ocr=await window.sigemOcrDocumento(item.id,status);if(ocr?.status==='concluido')completed++;else failed++;}
-      catch(e){failed++;console.warn('OCR pendente:',item.nome_arquivo,e);}
-     }else failed++;
-    }
+    else failed++;
    }catch(e){
     failed++;
     console.warn('Falha no lote:',item.nome_arquivo,e);
@@ -118,22 +113,10 @@ el('idx-pause').addEventListener('click',()=>{batchStop=true;status('Pausa solic
 
 window.sigemIndexarNovoArquivo=async function(table,obra){
  try{
-  const {data:jobs,error}=await db.from('documento_indexacao').select('id,storage_path').eq('obra_id',obra).eq('origem_tabela',table).eq('status','pendente').order('criado_em',{ascending:false}).limit(1);
+  const {data:jobs,error}=await db.from('documento_indexacao').select('id').eq('obra_id',obra).eq('origem_tabela',table).eq('status','pendente').order('criado_em',{ascending:false}).limit(1);
   if(error||!jobs?.length)return;
-  const job=jobs[0],id=job.id;
-  // Padrão único para uploads atuais e futuros: verificar texto por página e aplicar OCR quando faltar.
-  if(job.storage_path?.toLowerCase().endsWith('.pdf')&&window.sigemOcrDocumento){
-   try{
-    const ocr=await window.sigemOcrDocumento(id,()=>{});
-    if(ocr?.status==='concluido')return;
-   }catch(e){console.warn('OCR inicial não concluído; tentando indexador de texto:',e);}
-  }
-  const {data:result,error:callError}=await db.functions.invoke('sigem-indexar-documento',{body:{id}});
-  if(callError){console.warn('Indexação pendente para processamento:',callError.message);return;}
-  if(result?.status==='falhou'&&/OCR necessário|sem camada textual/i.test(result.erro||'')&&window.sigemOcrDocumento){
-   try{await window.sigemOcrDocumento(id,()=>{});}catch(e){console.warn('OCR pendente:',e);}
-  }else if(result?.status==='falhou')console.warn('Indexação falhou:',result.erro);
- }catch(e){console.warn('Indexação pendente:',e);}
+  await window.sigemProcessarArquivoGrande(jobs[0].id,()=>{});
+ }catch(e){console.warn('Indexação pendente ou com falha:',e);}
 };
 async function limparBibliotecas(){
  if(busy||batchRunning||!selectedWork?.id)return;
