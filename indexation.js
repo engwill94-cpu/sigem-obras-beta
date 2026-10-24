@@ -22,8 +22,8 @@ async function aplicarOcr(id){
  busy=true;el('idx-next').disabled=true;el('idx-batch').disabled=true;
  try{
   const result=await window.sigemProcessarArquivoGrande(id,status);
-  status(result?.status==='concluido'?'OCR concluído: '+result.trechos+' trechos pesquisáveis.':'OCR não realizado: '+(result?.status||'indisponível'));
- }catch(e){status('OCR não concluído: '+(e.message||e));}
+  status(result?.status==='concluido'?'Indexação concluída: '+result.trechos+' trechos pesquisáveis.':'Indexação não concluída: '+(result?.status||'indisponível'));
+ }catch(e){status('Indexação interrompida: '+(e.message||e)+'. Se houver checkpoint, clique em Reprocessar para continuar do último ponto confirmado.');}
  finally{busy=false;el('idx-next').disabled=false;el('idx-batch').disabled=false;await load();}
 }
 
