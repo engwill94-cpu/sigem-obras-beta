@@ -86,18 +86,21 @@
  async function preparePdf(file){
   if(!window.pdfjsLib||!window.PDFLib||!window.Tesseract)throw Error('Dependências de conversão OCR indisponíveis.');
   const buffer=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer.slice(0))}).promise;
-  let converted=null,worker=null,count=0,period=null;
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer)}).promise;
+  let converted=null,worker=null,count=0,period=null,font=null;
   try{
    for(let n=1;n<=pdf.numPages;n++){
     const page=await pdf.getPage(n),content=await page.getTextContent();
     const text=content.items.map(x=>x.str||'').join(' ');
     if(n===1)period=findMonth(text);
     if(text.trim().length>35)continue;
-    if(!converted)converted=await PDFLib.PDFDocument.load(buffer,{updateMetadata:false});
+    const operators=await page.getOperatorList();
+    const hasImage=operators.fnArray.some(op=>op===pdfjsLib.OPS.paintImageXObject||op===pdfjsLib.OPS.paintInlineImageXObject||op===pdfjsLib.OPS.paintImageMaskXObject||op===pdfjsLib.OPS.paintJpegXObject);
+    if(!hasImage)continue;
+    if(!converted){converted=await PDFLib.PDFDocument.load(buffer,{updateMetadata:false});font=await converted.embedFont(PDFLib.StandardFonts.Helvetica);}
     if(!worker)worker=await Tesseract.createWorker('por');
-    status('Aplicando OCR à página '+n+' de '+pdf.numPages+'...');
-    const viewport=page.getViewport({scale:1.7}),canvas=document.createElement('canvas');
+    status('OCR: página '+n+' de '+pdf.numPages+' ('+count+' convertida(s)). Não feche esta aba.');
+    const viewport=page.getViewport({scale:n===1?1.5:1.15}),canvas=document.createElement('canvas');
     canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
     const ctx=canvas.getContext('2d',{willReadFrequently:true});
     await page.render({canvasContext:ctx,viewport}).promise;
@@ -105,7 +108,6 @@
     canvas.width=0;canvas.height=0;
     if(n===1&&!period)period=findMonth(result.data.text);
     const p=converted.getPage(n-1),{width,height}=p.getSize();
-    const font=await converted.embedFont(PDFLib.StandardFonts.Helvetica);
     for(const line of result.data.lines||[]){
      const box=line.bbox;if(!box||!line.text?.trim())continue;
      const x=Math.max(0,box.x0/viewport.width*width),y=Math.max(0,height-box.y1/viewport.height*height);
@@ -153,14 +155,14 @@
     if(file.size>MAX||file.size===0){failures.push(file.name+' — tamanho inválido (limite 500 MB)');continue;}
     try{
      if(selectedWork?.id!==id)throw Error('A obra selecionada foi alterada.');
-     let month=null,processed=null;
-     if(type==='pdf'){processed=await preparePdf(file);month=processed.period;}else{try{month=await detectMonth(file,type);}catch(err){console.warn('Leitura automática da capa não concluída:',err);}}
      const hash=await digest(file);
      const {data:existing,error:checkError}=await db.from(TABLE).select('id').eq('obra_id',id).eq('checksum_sha256',hash).limit(1);
      if(checkError)throw checkError;
      if(existing?.length){failures.push(file.name+' — arquivo idêntico já cadastrado');continue;}
+     let month=null,processed=null;
+     if(type==='pdf'){processed=await preparePdf(file);month=processed.period;}else{try{month=await detectMonth(file,type);}catch(err){console.warn('Leitura automática da capa não concluída:',err);}}
      const path=id+'/'+crypto.randomUUID()+'.'+type;
-     const {error:storageError}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type||'application/octet-stream'});
+     const {error:storageError}=await storageUpload(path,file);
      if(storageError)throw storageError;
      let searchablePath=null;
      if(processed?.file){searchablePath=id+'/pesquisaveis/'+crypto.randomUUID()+'.pdf';const {error:ocrUploadError}=await storageUpload(searchablePath,processed.file);if(ocrUploadError){await db.storage.from(BUCKET).remove([path]);throw ocrUploadError;}}
