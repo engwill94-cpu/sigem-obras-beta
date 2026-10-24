@@ -14,6 +14,8 @@
   const s=normalize(text).replace(/\s+/g,' ');
   const near=/(?:periodo|mes|competencia|referencia)\s*(?:de|da|do)?\s*(?:medicao)?\s*[:\-–]?\s*(.{0,110})/g;
   const chunks=[...s.matchAll(near)].map(x=>x[1]);
+  const periodDate=/\\b(0?[1-9]|[12]\\d|3[01])\\s*[\\/\\-.]\\s*(0?[1-9]|1[0-2])\\s*[\\/\\-.]\\s*(20\\d{2})\\b/;
+  for(const part of chunks){const d=part.match(periodDate);if(d)return d[3]+'-'+d[2].padStart(2,'0');}
   const parse=part=>{
    const words=Object.keys(monthNames).join('|');
    let m=part.match(new RegExp('\\b('+words+')\\s*(?:de|\\/|\\-|\\s)*\\s*(20\\d{2})\\b','i'));
@@ -23,6 +25,7 @@
    return null;
   };
   for(const part of chunks){const result=parse(part);if(result)return result;}
+  const labelled=s.match(/periodo\\s*[:\\-–]?\\s*(.{0,180})/);if(labelled){const d=labelled[1].match(periodDate);if(d)return d[3]+'-'+d[2].padStart(2,'0');}
   return parse(s);
  }
  async function detectMonth(file,type){
