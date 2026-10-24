@@ -75,7 +75,7 @@ async function upload(){
     path=id+'/'+crypto.randomUUID()+'.'+type;
     const {error:storageError}=await uploadStorage(path,file);if(storageError)throw storageError;
     const {error:saveError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,storage_path:path,tamanho_bytes:file.size,formato:type,checksum_sha256:hash,uploaded_by:currentUser.id});
-    if(saveError)throw saveError;added++;
+    if(saveError)throw saveError;window.sigemIndexarNovoArquivo?.('prateleiras_arquivos',id);added++;
    }catch(e){errors.push(file.name+': '+e.message);if(path)await db.storage.from(BUCKET).remove([path]);}
   }
   el('shelf-files').value='';await load();msg(added+' arquivo(s) cadastrado(s).'+(errors.length?' Falhas: '+errors.join('; '):''));
