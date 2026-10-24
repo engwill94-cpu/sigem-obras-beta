@@ -21,40 +21,57 @@
  }
  function timeout(p,ms=35000){return Promise.race([Promise.resolve(p),new Promise((_,reject)=>setTimeout(()=>reject(Error('Tempo limite excedido.')),ms))]);}
  function make(tag,cls,content){const e=document.createElement(tag);if(cls)e.className=cls;if(content!==undefined)e.textContent=content;return e;}
+ function revisionRank(rev){
+  if(/^[1-9][0-9]*$/.test(rev))return [1,Number(rev)];
+  return [0,rev.toUpperCase().charCodeAt(0)];
+ }
+ function latestRows(rows){
+  const latest=new Map();
+  for(const record of rows){
+   // Cada folha mantém uma revisão vigente por formato (PDF, DWG ou DXF).
+   const key=record.codigo_folha+'|'+record.formato;
+   const previous=latest.get(key);
+   if(!previous){latest.set(key,record);continue;}
+   const currentRank=revisionRank(record.revisao),oldRank=revisionRank(previous.revisao);
+   if(currentRank[0]>oldRank[0]||(currentRank[0]===oldRank[0]&&currentRank[1]>oldRank[1]))latest.set(key,record);
+  }
+  return [...latest.values()];
+ }
  function render(){
-  const list=el('sp-discipline-list'),filter=el('sp-filter'),term=el('sp-search').value.trim().toLocaleLowerCase('pt-BR');
-  if(!list)return;
-  const active=filter.value;filter.replaceChildren(new Option('Todas as disciplinas',''));
-  Object.entries(DISC).forEach(([code,name])=>filter.add(new Option(code+' — '+name,code)));
+  const list=el('sp-discipline-list'),filter=el('sp-filter'),search=el('sp-search');
+  if(!list||!filter||!search)return;
+  const active=filter.value,term=search.value.trim().toLocaleLowerCase('pt-BR');
+  const onlyLatest=!!el('sp-latest-only')?.checked;
+  filter.replaceChildren(new Option('Selecione uma disciplina',''));
+  for(const [code,name] of Object.entries(DISC))filter.add(new Option(code+' — '+name,code));
   filter.value=active;
   el('sp-discipline-count').textContent=new Set(records.map(r=>r.disciplina)).size;
   el('sp-pdf-count').textContent=records.filter(r=>r.formato==='pdf').length;
   el('sp-cad-count').textContent=records.filter(r=>r.formato!=='pdf').length;
   list.replaceChildren();
-  for(const [letter,title] of Object.entries(DISC)){
-   if(active&&active!==letter)continue;
-   const rows=records.filter(r=>r.disciplina===letter&&(!term||[r.nome_arquivo,r.codigo_folha,r.folha,r.revisao,r.formato,title,PHASE[r.fase],TYPES[r.codigo_folha.slice(0,2)]].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(term))));
-   if(!rows.length)continue;
-   const details=make('details','sp-discipline-item');details.open=!!active||!!term;
-   const summary=make('summary');summary.append(make('span','sp-discipline-label',letter+' — '+title),make('span','sp-count',rows.length+' arquivo(s)'));details.append(summary);
-   for(const [format,label] of [['pdf','Arquivos PDF'],['cad','Arquivos DWG / DXF']]){
-    const section=make('div','sp-format');section.append(make('strong','',label));
-    const group=rows.filter(r=>format==='pdf'?r.formato==='pdf':r.formato!=='pdf');
-    if(!group.length)section.append(make('p','','Nenhum arquivo neste formato.'));
-    for(const record of group){
-     const row=make('div','sp-project-row'),info=make('div','sp-project-name'),actions=make('div','sp-project-actions');
-     info.append(make('strong','',record.nome_arquivo),make('small','',(TYPES[record.codigo_folha.slice(0,2)]||'Documento técnico')+' · '+PHASE[record.fase]+' · Folha '+record.folha+' · Rev. '+record.revisao));
-     if(record.formato==='pdf'){
-      const view=make('button','','◉ Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(record));actions.append(view);
-     }
-     const download=make('button','','↓ Download');download.type='button';download.addEventListener('click',()=>downloadFile(record));actions.append(download);
-     row.append(info,actions);section.append(row);
+  if(!active){list.append(make('p','sp-library-footnote','Selecione uma disciplina para consultar os arquivos cadastrados.'));return;}
+  let rows=records.filter(r=>r.disciplina===active);
+  if(onlyLatest)rows=latestRows(rows);
+  rows=rows.filter(r=>!term||[r.nome_arquivo,r.codigo_folha,r.folha,r.revisao,r.formato,DISC[r.disciplina],PHASE[r.fase],TYPES[r.codigo_folha.slice(0,2)]].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(term)));
+  rows.sort((a,b)=>a.codigo_folha.localeCompare(b.codigo_folha,'pt-BR',{numeric:true})||revisionRank(b.revisao)[0]-revisionRank(a.revisao)[0]||revisionRank(b.revisao)[1]-revisionRank(a.revisao)[1]);
+  if(!rows.length){list.append(make('p','sp-library-footnote','Nenhum projeto encontrado para esta disciplina e filtros.'));return;}
+  list.append(make('p','sp-library-result',rows.length+' arquivo(s) · '+active+' — '+DISC[active]));
+  for(const [format,label] of [['pdf','Arquivos PDF'],['cad','Arquivos DWG / DXF']]){
+   const group=rows.filter(r=>format==='pdf'?r.formato==='pdf':r.formato!=='pdf');
+   if(!group.length)continue;
+   const section=make('div','sp-format sp-result-section');
+   section.append(make('strong','',label+' ('+group.length+')'));
+   for(const record of group){
+    const row=make('div','sp-project-row'),info=make('div','sp-project-name'),actions=make('div','sp-project-actions');
+    info.append(make('strong','',record.nome_arquivo),make('small','',(TYPES[record.codigo_folha.slice(0,2)]||'Documento técnico')+' · '+PHASE[record.fase]+' · Folha '+record.folha+' · Rev. '+record.revisao));
+    if(record.formato==='pdf'){
+     const view=make('button','','◉ Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(record));actions.append(view);
     }
-    details.append(section);
+    const download=make('button','','↓ Download');download.type='button';download.addEventListener('click',()=>downloadFile(record));actions.append(download);
+    row.append(info,actions);section.append(row);
    }
-   list.append(details);
+   list.append(section);
   }
-  if(!list.children.length)list.append(make('p','sp-library-footnote',records.length?'Nenhum projeto corresponde à pesquisa.':'Nenhum projeto cadastrado nesta obra.'));
  }
  async function load(){
   if(!db||!selectedWork)return;
@@ -130,5 +147,6 @@
  el('sp-upload-button')?.addEventListener('click',()=>{message('Iniciando verificação dos arquivos...');upload().catch(error=>{const btn=el('sp-upload-button');btn.disabled=false;btn.textContent='↑ Verificar e cadastrar projetos';message('Não foi possível concluir a verificação: '+(error?.message||String(error)),true);});});
  el('sp-search')?.addEventListener('input',render);
  el('sp-filter')?.addEventListener('change',render);
+ el('sp-latest-only')?.addEventListener('change',render);
  try{render();}catch(error){message('Erro ao inicializar a biblioteca de projetos: '+(error?.message||String(error)),true);}
 })();
