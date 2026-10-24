@@ -42,15 +42,18 @@
   if(!list||!filter)return;
   const active=filter.value;
   const onlyLatest=!!el('sp-latest-only')?.checked;
+  const available=new Set(records.map(r=>r.disciplina));
   filter.replaceChildren(new Option('Selecione uma disciplina',''));
-  for(const [code,name] of Object.entries(DISC))filter.add(new Option(code+' — '+name,code));
-  filter.value=active;
+  for(const [code,name] of Object.entries(DISC)){
+   if(available.has(code))filter.add(new Option(code+' — '+name,code));
+  }
+  filter.value=available.has(active)?active:'';
   el('sp-discipline-count').textContent=new Set(records.map(r=>r.disciplina)).size;
   el('sp-pdf-count').textContent=records.filter(r=>r.formato==='pdf').length;
   el('sp-cad-count').textContent=records.filter(r=>r.formato!=='pdf').length;
   list.replaceChildren();
-  if(!active){list.append(make('p','sp-library-footnote','Selecione uma disciplina para consultar os arquivos cadastrados.'));return;}
-  let rows=records.filter(r=>r.disciplina===active);
+  if(!filter.value){list.append(make('p','sp-library-footnote','Selecione uma disciplina para consultar os arquivos cadastrados.'));return;}
+  let rows=records.filter(r=>r.disciplina===filter.value);
   if(onlyLatest)rows=latestRows(rows);
   
   rows.sort((a,b)=>a.codigo_folha.localeCompare(b.codigo_folha,'pt-BR',{numeric:true})||revisionRank(b.revisao)[0]-revisionRank(a.revisao)[0]||revisionRank(b.revisao)[1]-revisionRank(a.revisao)[1]);
