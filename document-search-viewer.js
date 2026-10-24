@@ -83,7 +83,11 @@ async function render(){
   const text=await page.getTextContent();
   for(const item of text.items){if(!item.str)continue;const tr=pdfjsLib.Util.transform(viewport.transform,item.transform);const span=document.createElement('span');span.className='idx-pdf-text';span.style.left=tr[4]+'px';span.style.top=(tr[5]-Math.hypot(tr[2],tr[3]))+'px';span.style.fontSize=Math.hypot(tr[2],tr[3])+'px';span.textContent=item.str;const has=matches(item.str,s.q).length;if(has){span.innerHTML=highlighted(item.str,s.q,true);span.classList.add('idx-pdf-hit');}layer.appendChild(span);}
   const excerpt=document.createElement('div');excerpt.className='idx-view-excerpt';excerpt.innerHTML='<strong>Trecho indexado · página '+row.pagina+'</strong><p>'+highlighted(row.conteudo,s.q,true)+'</p>';body.appendChild(excerpt);
-  const mark=layer.querySelector('mark');if(mark)mark.scrollIntoView({block:'center',behavior:'smooth'});
+  const marked=[...layer.querySelectorAll('mark')];
+  const pageHits=s.hits.filter(h=>h.row.pagina===row.pagina);
+  const ordinal=pageHits.findIndex(h=>h===hit);
+  const mark=marked[Math.min(Math.max(0,ordinal),Math.max(0,marked.length-1))];
+  if(mark){layer.querySelectorAll('mark').forEach(m=>m.classList.remove('idx-mark-active'));mark.classList.add('idx-mark-active');mark.scrollIntoView({block:'center',behavior:'smooth'});}
  }else{
   const card=document.createElement('article');card.className='idx-excel-hit';
   card.innerHTML='<strong>Aba: '+esc(row.aba||'Não identificada')+' · Célula: '+esc(row.celula_inicio||'—')+'</strong><p>'+highlighted(row.conteudo,s.q,true)+'</p>';
