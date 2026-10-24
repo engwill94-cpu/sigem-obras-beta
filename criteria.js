@@ -10,12 +10,11 @@ async function preparePdf(file){
   if(!window.pdfjsLib||!window.PDFLib||!window.Tesseract)throw Error('Dependências de conversão OCR indisponíveis.');
   const buffer=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer.slice(0))}).promise;
-  let converted=null,worker=null,count=0,period=null,font=null;
+  let converted=null,worker=null,count=0,font=null;
   try{
    for(let n=1;n<=pdf.numPages;n++){
     const page=await pdf.getPage(n),content=await page.getTextContent();
     const text=content.items.map(x=>x.str||'').join(' ');
-    if(n===1)period=findMonth(text);
     if(text.trim().length>35)continue;
     const operators=await page.getOperatorList();
     const hasImage=operators.fnArray.some(op=>op===pdfjsLib.OPS.paintImageXObject||op===pdfjsLib.OPS.paintInlineImageXObject||op===pdfjsLib.OPS.paintImageMaskXObject||op===pdfjsLib.OPS.paintJpegXObject);
@@ -29,7 +28,6 @@ async function preparePdf(file){
     await page.render({canvasContext:ctx,viewport}).promise;
     const result=await worker.recognize(canvas,{}, {text:true,blocks:true});
     canvas.width=0;canvas.height=0;
-    if(n===1&&!period)period=findMonth(result.data.text);
     const p=converted.getPage(n-1),{width,height}=p.getSize();
     const lines=result.data.lines||result.data.blocks?.flatMap(b=>b.paragraphs?.flatMap(p=>p.lines||[])||[])||[];
     for(const line of lines){
@@ -42,11 +40,11 @@ async function preparePdf(file){
     }
     count++;
    }
-   if(!converted)return {file:null,period,status:'original_pesquisavel',detail:'Todas as páginas possuem texto pesquisável.'};
+   if(!converted)return {file:null,status:'original_pesquisavel',detail:'Todas as páginas possuem texto pesquisável.'};
    if(!count)throw Error('Não foi possível reconhecer texto nas páginas digitalizadas.');
    msg('Gerando versão PDF pesquisável...');
    const bytes=await converted.save({useObjectStreams:true});
-   return {file:new File([bytes],file.name.replace(/\.pdf$/i,'')+'-pesquisavel.pdf',{type:'application/pdf'}),period,status:'convertido',detail:count+' página(s) processada(s) com OCR'};
+   return {file:new File([bytes],file.name.replace(/\.pdf$/i,'')+'-pesquisavel.pdf',{type:'application/pdf'}),status:'convertido',detail:count+' página(s) processada(s) com OCR'};
   }finally{if(worker)await worker.terminate();await pdf.destroy();}
  }
 
