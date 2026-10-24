@@ -95,3 +95,6 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 .work-main-nav .libraries-submenu{padding:3px 0 9px 12px;margin-left:19px;border-left:1px solid rgba(255,255,255,.24)}
 .work-main-nav .libraries-submenu .library-group-label{padding:14px 12px 5px;color:#95c5df;font-size:12px;font-weight:700;letter-spacing:.03em}
 .work-main-nav .libraries-submenu button{padding:9px 12px;font-size:12px}
+
+/* Fase 2: painel de indexação */
+.idx-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}.idx-actions input{flex:1;min-width:210px;padding:12px;border:1px solid #ccdbe7;border-radius:8px}.idx-list{max-height:560px;overflow:auto}.idx-item{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 2px;border-bottom:1px solid #e4edf4}.idx-item strong{display:block;font-size:13px;overflow-wrap:anywhere}.idx-item small{display:block;color:#647b91;margin-top:5px}.idx-item button{padding:8px 12px;flex-shrink:0}.idx-error{color:#a33333!important}.idx-result{padding:14px 0;border-bottom:1px solid #e4edf4}.idx-result strong,.idx-result small{display:block}.idx-result small{color:#647b91;margin-top:4px}.idx-result p{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
