@@ -168,6 +168,7 @@
      if(processed?.file){searchablePath=id+'/pesquisaveis/'+crypto.randomUUID()+'.pdf';const {error:ocrUploadError}=await storageUpload(searchablePath,processed.file);if(ocrUploadError){await db.storage.from(BUCKET).remove([path]);throw ocrUploadError;}}
      const {error:insertError}=await db.from(TABLE).insert({obra_id:id,nome_arquivo:file.name,formato:type,tamanho_bytes:file.size,storage_path:path,checksum_sha256:hash,uploaded_by:currentUser.id,competencia:month?month+'-01':null,pdf_pesquisavel_path:searchablePath,ocr_status:processed?.status||null,ocr_detalhe:processed?.detail||null});
      if(insertError){await db.storage.from(BUCKET).remove([path,...(searchablePath?[searchablePath]:[])]);throw insertError;}
+     window.sigemIndexarNovoArquivo?.('medicoes_arquivos',id);
      added++;if(!month)unidentified.push(file.name);
     }catch(error){failures.push(file.name+' — '+error.message);}
    }
