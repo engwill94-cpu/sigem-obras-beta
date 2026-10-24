@@ -20,7 +20,7 @@
   if(downloadError)throw downloadError;
   if(ext==='pdf'&&file.size>MAX_PDF)throw Error('PDF acima de 120 MB.');
   if(ext!=='pdf'&&file.size>MAX_EXCEL)throw Error('Planilha acima de 250 MB.');
-  let pdf=null,worker=null,started=false,count=0,pages=0,method=ext==='pdf'?'pdf':'excel',lastPulse=0;
+  let pdf=null,worker=null,started=false,count=0,pages=0,checkpoint=0,method=ext==='pdf'?'pdf':'excel',lastPulse=0;
   const buffer=[];
   async function pulse(){if(Date.now()-lastPulse>45000){await invoke({fase:'pulso',id});lastPulse=Date.now();}}
   async function flush(){
@@ -42,9 +42,11 @@
    }else{
     if(!window.XLSX)throw Error('Leitor Excel indisponível.');
    }
-   await invoke({fase:'iniciar',id});started=true;lastPulse=Date.now();
+   const resumed=await invoke({fase:'iniciar',id,metodo:method});started=true;lastPulse=Date.now();
+   checkpoint=resumed.checkpoint||0;count=resumed.trechos||0;
+   if(checkpoint)notify('Retomando do checkpoint '+checkpoint+' — '+count+' trechos preservados.');
    if(pdf){
-    for(let n=1;n<=pages;n++){
+    for(let n=checkpoint+1;n<=pages;n++){
      notify('PDF: página '+n+' de '+pages+' — '+name+' · '+count+' trechos gravados');
      const page=await pdf.getPage(n),content=await page.getTextContent();
      let text=content.items.map(x=>x.str||'').join(' ').trim();
@@ -59,7 +61,8 @@
      }
      append(text,{pagina:n});
      page.cleanup();
-     if(buffer.length>=60||n===pages)await flush();
+     if(buffer.length>=60||n===pages||n%10===0)await flush();
+     if(n%10===0||n===pages){await invoke({fase:'checkpoint',id,unidade:n,total:pages});checkpoint=n;}
      await pulse();
 
     }
@@ -69,10 +72,10 @@
     pages=workbook.SheetNames.length;
     if(pages>1000)throw Error('Excel acima de 1.000 abas.');
     if(!pages)throw Error('Planilha sem abas.');
-    for(let k=0;k<workbook.SheetNames.length;k++){
+    for(let k=checkpoint;k<workbook.SheetNames.length;k++){
      const sheetName=workbook.SheetNames[k],sheet=workbook.Sheets[sheetName];
      notify('Excel: aba '+(k+1)+' de '+pages+' — '+sheetName+' · '+count+' trechos');
-     if(!sheet?.['!ref'])continue;
+     if(!sheet?.['!ref']){await invoke({fase:'checkpoint',id,unidade:k+1,total:pages});continue;}
      const range=XLSX.utils.decode_range(sheet['!ref']);
      if(range.e.r-range.s.r>1000000)throw Error('Aba excede um milhão de linhas.');
      for(let r=range.s.r;r<=range.e.r;r++){
@@ -88,7 +91,7 @@
       if(buffer.length>=60)await flush();
       if(r%100===0)await pulse();
      }
-     await flush();await pulse();
+     await flush();await invoke({fase:'checkpoint',id,unidade:k+1,total:pages});checkpoint=k+1;await pulse();
     }
    }
    if(!count)throw Error('Arquivo sem conteúdo textual extraível.');
