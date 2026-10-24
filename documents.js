@@ -161,6 +161,7 @@ $('docs-send').addEventListener('click',async()=>{
      if(insertError.code==='23505')throw new Error('Documento já cadastrado nesta obra. O arquivo está disponível para consulta.');
      throw insertError;
     }
+    window.sigemIndexarNovoArquivo?.('documentos',obraId);
     count++;
     docsMessage('Enviado: '+file.name+' ('+count+' concluído(s)).');
    }catch(error){
