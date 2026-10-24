@@ -3,7 +3,7 @@ const docsBucket='documentos-obras';
 const docsCategories={contrato:'Contrato',termo_referencia:'Termo de Referência',aditamento:'Termo de Aditamento',pgt:'PGT',outro:'Outro'};
 let docsRecords=[],docsSelected=null,docsUrl=null,docsZoom=100,docsRequest=0,docsPdf=null,docsPreviewToken=0;
 let docsSection='contratual';
-const docsSectionNames={licitacao:'Licitação',contratual:'Contratual',ambiental:'Ambiental',licencas_alvaras:'Licenças e alvarás'};
+const docsSectionNames={licitacao:'Licitação',contratual:'Contratual',ambiental:'Ambiental',licencas_alvaras:'Licenças e alvarás',atas_reuniao:'Atas de Reunião'};
 function docsSelectSection(section){
  if(!docsSectionNames[section])return;
  docsSection=section;
