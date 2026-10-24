@@ -66,3 +66,5 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 .sp-library-bottom .sp-library-footnote{position:static;transform:none;margin:0}
 .sp-library-bottom .sp-download-all{margin:0 0 0 auto;align-self:center}
 @media(max-width:850px){.sp-library-bottom{flex-direction:row;flex-wrap:wrap;justify-content:space-between}.sp-library-bottom .sp-library-footnote{text-align:left}}
+
+.sp-hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.sp-hero-actions .sp-hero-tag{cursor:pointer;font-family:inherit;color:#fff;background:#ffffff19;border:1px solid #ffffff55;border-radius:18px;padding:8px 13px;font-size:12px}.sp-hero-actions .sp-hero-tag:hover{background:#ffffff30}
