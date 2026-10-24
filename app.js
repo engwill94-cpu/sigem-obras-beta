@@ -150,7 +150,7 @@ async function loadWorks() {
   const { data, error } = await db
     .from('obras')
     .select(
-      'id,codigo,nome,municipio,uf,status,orgao,endereco,descricao,created_at'
+      'id,codigo,nome,municipio,uf,status,orgao,endereco,descricao,imagem_capa,created_at'
     )
     .order('created_at', { ascending: false });
 
@@ -256,7 +256,8 @@ function makeWorkCard(w) {
 
   const visual = document.createElement('div');
   visual.className = 'work-visual';
-  visual.textContent = '▥';
+  visual.textContent = w.imagem_capa ? '' : '▥';
+  if(w.imagem_capa){visual.style.backgroundImage='url('+JSON.stringify(w.imagem_capa)+')';visual.classList.add('work-visual-photo');}
   visual.setAttribute('aria-hidden', 'true');
 
   const body = document.createElement('div');
@@ -690,6 +691,10 @@ function openEditor(w = null) {
 
   $('work-form').reset();
   $('work-id').value = '';
+  $('imagem-capa').value='';
+  $('imagem-capa-preview').src=w?.imagem_capa||'';
+  $('imagem-capa-preview').classList.toggle('hidden',!w?.imagem_capa);
+  $('imagem-capa-status').textContent=w?.imagem_capa?'Imagem atual da obra. Selecione outra para substituir.':'Nenhuma imagem personalizada cadastrada.';
 
   for (const key of [
     'id',
@@ -748,7 +753,18 @@ $('work-form').addEventListener('submit', async e => {
   const id = $('work-id').value;
 
   $('save-btn').disabled = true;
-
+  const photo=$('imagem-capa').files[0];
+  if(photo){
+   if(!['image/jpeg','image/png','image/webp'].includes(photo.type)||photo.size>5*1024*1024){
+    notice('A imagem deve ser JPG, PNG ou WEBP, com até 5 MB.');
+    $('save-btn').disabled=false;return;
+   }
+   const ext=photo.type==='image/png'?'png':photo.type==='image/webp'?'webp':'jpg';
+   const path='obra-'+(id||crypto.randomUUID())+'/'+crypto.randomUUID()+'.'+ext;
+   const {error:uploadError}=await db.storage.from('capas-obras').upload(path,photo,{contentType:photo.type,upsert:false});
+   if(uploadError){notice('Não foi possível enviar a imagem: '+uploadError.message);$('save-btn').disabled=false;return;}
+   values.imagem_capa=db.storage.from('capas-obras').getPublicUrl(path).data.publicUrl;
+  }
   const { error } = id
     ? await db.from('obras').update(values).eq('id', id)
     : await db.from('obras').insert(values);
