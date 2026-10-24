@@ -5,7 +5,7 @@
  let active=false;
  async function ocrDocumento(id,onProgress=()=>{}){
   if(active)return {status:'ocupado'};
-  if(!window.db||!window.pdfjsLib||!window.Tesseract)throw Error('Bibliotecas de OCR indisponíveis.');
+  if(!db||!window.pdfjsLib||!window.Tesseract)throw Error('Bibliotecas de OCR indisponíveis.');
   const {data:job,error:lookupError}=await db.from('documento_indexacao').select('id,storage_bucket,storage_path,nome_arquivo,status').eq('id',id).single();
   if(lookupError)throw lookupError;
   if(!['falhou','pendente'].includes(job.status))return {status:'ignorado'};
