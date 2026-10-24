@@ -11,14 +11,14 @@
  const monthNames={'janeiro':1,'fevereiro':2,'marco':3,'abril':4,'maio':5,'junho':6,'julho':7,'agosto':8,'setembro':9,'outubro':10,'novembro':11,'dezembro':12};
  const normalize=s=>String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
  function findMonth(text){
-  const s=normalize(text).replace(/\\s+/g,' ');
-  const near=/((?:periodo|mes|competencia|referencia)\\s*(?:de|da|do)?\\s*(?:medicao)?\\s*[:\\-–]?\\s*)(.{0,110})/g;
-  const chunks=[...s.matchAll(near)].map(x=>x[2]);
+  const s=normalize(text).replace(/\s+/g,' ');
+  const near=/(?:periodo|mes|competencia|referencia)\s*(?:de|da|do)?\s*(?:medicao)?\s*[:\-–]?\s*(.{0,110})/g;
+  const chunks=[...s.matchAll(near)].map(x=>x[1]);
   const parse=part=>{
    const words=Object.keys(monthNames).join('|');
-   let m=part.match(new RegExp('\\\\b('+words+')\\\\s*(?:de|\\\\/|\\\\-|\\\\s)*\\\\s*(20\\\\d{2})\\\\b','i'));
+   let m=part.match(new RegExp('\\b('+words+')\\s*(?:de|\\/|\\-|\\s)*\\s*(20\\d{2})\\b','i'));
    if(m)return m[2]+'-'+String(monthNames[m[1]]).padStart(2,'0');
-   m=part.match(/\\b(0?[1-9]|1[0-2])\\s*[\\/\\-.]\\s*(20\\d{2})\\b/);
+   m=part.match(/\b(0?[1-9]|1[0-2])\s*[\/\-.]\s*(20\d{2})\b/);
    if(m)return m[2]+'-'+m[1].padStart(2,'0');
    return null;
   };
@@ -99,7 +99,7 @@
    }
    el('med-files').value='';
    if(selectedWork?.id===id)await load();
-   status((added?added+' arquivo(s) cadastrado(s).':'Nenhum arquivo cadastrado.')+(failures.length?'\nNão cadastrados:\n'+failures.join('\n'):''));
+   status((added?added+' arquivo(s) cadastrado(s).':'Nenhum arquivo cadastrado.')+(failures.length?'\nNão cadastrados:\n'+failures.join('\n'):'')+(unidentified.length?'\nReferência não identificada (use Editar): '+unidentified.join(', '):''));
   }finally{busy=false;el('med-upload').disabled=false;}
  }
  function editCompetence(row){editTarget=row;el('med-edit-file').textContent=row.nome_arquivo;el('med-edit-month').value=row.competencia?.slice(0,7)||'';el('med-edit-status').textContent='';el('med-edit-competence').classList.remove('hidden');}
