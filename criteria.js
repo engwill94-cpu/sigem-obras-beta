@@ -52,7 +52,7 @@ async function perform(row,action){
  const popup=action==='view'?window.open('about:blank','_blank'):null;
  const {data,error}=await db.storage.from(BUCKET).createSignedUrl(row.storage_path,120);
  if(error){if(popup)popup.close();msg('Erro ao abrir: '+error.message);return;}
- if(action==='view'){if(popup)popup.location.replace(data.signedUrl);else msg('O navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.');}
+ if(action==='view'){if(popup)popup.location.replace('criteria-viewer.html#'+encodeURIComponent(JSON.stringify({url:data.signedUrl,name:row.nome_arquivo})));else msg('O navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.');}
  else{const {data:blob,error:downloadError}=await db.storage.from(BUCKET).download(row.storage_path);
   if(downloadError){msg('Erro no download: '+downloadError.message);return;}
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=row.nome_arquivo;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
