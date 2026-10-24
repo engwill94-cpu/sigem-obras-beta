@@ -9,12 +9,12 @@
  const status=(message)=>{el('med-upload-status').textContent=message;};
  const competence=s=>s?new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(s.slice(0,7)+'-01T00:00:00Z')).toUpperCase('pt-BR').replace(' DE ','/'):'Referência não identificada';
  const monthNames={'janeiro':1,'fevereiro':2,'marco':3,'abril':4,'maio':5,'junho':6,'julho':7,'agosto':8,'setembro':9,'outubro':10,'novembro':11,'dezembro':12};
- const normalize=s=>String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+ const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
  function findMonth(text){
   const s=normalize(text).replace(/\s+/g,' ');
   const near=/(?:periodo|mes|competencia|referencia)\s*(?:de|da|do)?\s*(?:medicao)?\s*[:\-–]?\s*(.{0,110})/g;
   const chunks=[...s.matchAll(near)].map(x=>x[1]);
-  const periodDate=/\\b(0?[1-9]|[12]\\d|3[01])\\s*[\\/\\-.]\\s*(0?[1-9]|1[0-2])\\s*[\\/\\-.]\\s*(20\\d{2})\\b/;
+  const periodDate=/\b(0?[1-9]|[12]\d|3[01])\s*[\/\-.]\s*(0?[1-9]|1[0-2])\s*[\/\-.]\s*(20\d{2})\b/;
   for(const part of chunks){const d=part.match(periodDate);if(d)return d[3]+'-'+d[2].padStart(2,'0');}
   const parse=part=>{
    const words=Object.keys(monthNames).join('|');
@@ -25,7 +25,7 @@
    return null;
   };
   for(const part of chunks){const result=parse(part);if(result)return result;}
-  const labelled=s.match(/periodo\\s*[:\\-–]?\\s*(.{0,180})/);if(labelled){const d=labelled[1].match(periodDate);if(d)return d[3]+'-'+d[2].padStart(2,'0');}
+  const labelled=s.match(/periodo\s*[:\-–]?\s*(.{0,180})/);if(labelled){const d=labelled[1].match(periodDate);if(d)return d[3]+'-'+d[2].padStart(2,'0');}
   return parse(s);
  }
  async function detectMonth(file,type){
@@ -76,7 +76,6 @@
  async function upload(){
   if(busy||!selectedWork)return;
   const files=[...el('med-files').files];if(!files.length){status('Selecione pelo menos um arquivo.');return;}
-  const month=el('med-competence').value;if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){status('Informe o mês e ano de referência antes de cadastrar.');return;}
   const id=selectedWork.id;busy=true;el('med-upload').disabled=true;
   const failures=[],unidentified=[];let added=0;
   try{
