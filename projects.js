@@ -177,29 +177,59 @@
   table.append(tbody);container.append(table);section.append(container);return section;
  }
  function downloadMasterReport(){
-  if(!masterReport||typeof XLSX==='undefined')return;
-  const r=masterReport,wb=XLSX.utils.book_new();
-  function sheet(name,headers,rows,widths){
-   const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-   ws['!cols']=widths.map(w=>({wch:w}));
-   ws['!autofilter']={ref:'A1:'+XLSX.utils.encode_col(headers.length-1)+(rows.length+1)};
-   XLSX.utils.book_append_sheet(wb,ws,name);
+  if(!masterReport)return;
+  if(!window.jspdf?.jsPDF){
+   masterNotice('Gerador de PDF indisponível. Atualize a página e tente novamente.',true);
+   return;
   }
-  sheet('Resumo',['SIGEM OBRAS — RELATÓRIO DE CONFERÊNCIA','Informação'],[
-   ['Empreendimento',r.obraNome],['Lista Mestra',r.file],['Data e hora',r.date],
-   ['Folhas na Lista Mestra',r.total],['Arquivos cadastrados na obra',r.registered],
-   ['Folhas com revisões obsoletas',r.obsolete.length],['Folhas não cadastradas',r.missing.length],
-   ['Folhas canceladas com arquivos',r.cancelled.length],
-   ['Arquivos sujeitos à exclusão',r.cancelled.reduce((n,x)=>n+x.files.length,0)],
-   ['Observação','Relatório gerado antes da confirmação de exclusão.']
-  ],[46,75]);
-  sheet('Revisões obsoletas',['Código da folha','Revisões no SIGEM (obsoletas)','Revisão vigente','Código vigente na Lista Mestra','Linha na Lista'],r.obsolete.map(x=>[x.entry.sheet,x.revisions.join(', '),x.entry.rev,x.entry.code,x.entry.line]),[39,30,19,48,16]);
-  sheet('Folhas ausentes',['Código da folha','Revisão vigente','Código vigente na Lista Mestra','Linha na Lista'],r.missing.map(x=>[x.sheet,x.rev,x.code,x.line]),[39,19,48,16]);
-  sheet('Projetos cancelados',['Código da folha','Revisão na Lista','Arquivos cadastrados','Revisões cadastradas','Formatos','Arquivos para exclusão','Linha na Lista'],r.cancelled.map(x=>[x.entry.sheet,x.entry.rev,x.files.length,[...new Set(x.files.map(f=>f.revisao))].join(', '),[...new Set(x.files.map(f=>f.formato.toUpperCase()))].join(', '),x.files.map(f=>f.nome_arquivo).join('; '),x.entry.line]),[39,18,22,30,19,90,16]);
-  const stamp=new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb,'SIGEM_SPOBRAS_Conferencia_Lista_Mestra_'+stamp+'.xlsx');
+  try{
+   const r=masterReport,doc=new window.jspdf.jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+   if(typeof doc.autoTable!=='function')throw Error('Módulo de tabelas PDF indisponível.');
+   const margin=15,pageWidth=210,contentWidth=180;
+   const plain=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+   const section=(title,heads,rows)=>{
+    let y=doc.lastAutoTable?.finalY||78;
+    if(y>253){doc.addPage();y=23;}
+    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(15,54,76);
+    doc.text(plain(title),margin,y+9);
+    doc.autoTable({
+     startY:y+13,margin:{left:margin,right:margin,bottom:18},
+     head:[heads.map(plain)],
+     body:(rows.length?rows:[['Nenhuma ocorrencia identificada.',...heads.slice(1).map(()=>'')]]).map(row=>row.map(plain)),
+     theme:'grid',styles:{font:'helvetica',fontSize:8,cellPadding:2.7,overflow:'linebreak',valign:'top'},
+     headStyles:{fillColor:[17,77,99],textColor:[255,255,255],fontStyle:'bold'},
+     alternateRowStyles:{fillColor:[245,249,251]},
+     columnStyles:{0:{cellWidth:87}},didDrawPage:()=>{}
+    });
+   };
+   doc.setFillColor(12,47,72);doc.rect(0,0,pageWidth,34,'F');
+   doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(17);
+   doc.text('SIGEM OBRAS | SPOBRAS',margin,17);
+   doc.setFont('helvetica','normal');doc.setFontSize(10);
+   doc.text('Relatorio de conferencia da Lista Mestra de Projetos',margin,25);
+   doc.setTextColor(40,66,82);doc.setFontSize(9);
+   doc.text(doc.splitTextToSize(plain('Empreendimento: '+r.obraNome),contentWidth),margin,43);
+   doc.text(doc.splitTextToSize(plain('Lista Mestra: '+r.file+' | Data: '+r.date),contentWidth),margin,51);
+   doc.setFillColor(233,244,248);doc.roundedRect(margin,59,contentWidth,19,2,2,'F');
+   doc.setFont('helvetica','bold');doc.setFontSize(9);
+   doc.text('Folhas: '+r.total+'    Obsoletas: '+r.obsolete.length+'    Ausentes: '+r.missing.length+'    Canceladas: '+r.cancelled.length,margin+5,70);
+   doc.lastAutoTable={finalY:80};
+   section('1. REVISOES OBSOLETAS',['Codigo da folha','Revisoes no SIGEM','Vigente'],r.obsolete.map(x=>[x.entry.sheet,x.revisions.join(', '),x.entry.rev]));
+   section('2. FOLHAS NAO CADASTRADAS',['Codigo da folha','Revisao vigente'],r.missing.map(x=>[x.sheet,x.rev]));
+   section('3. PROJETOS CANCELADOS',['Codigo da folha','Arquivos','Revisoes e formatos'],r.cancelled.map(x=>[x.entry.sheet,x.files.length,[...new Set(x.files.map(f=>f.revisao+' / '+f.formato.toUpperCase()))].join(', ')]));
+   section('4. ARQUIVOS SUJEITOS A EXCLUSAO',['Codigo da folha','Nome do arquivo'],r.cancelled.flatMap(x=>x.files.map(f=>[x.entry.sheet,f.nome_arquivo])));
+   let y=(doc.lastAutoTable?.finalY||40)+9;
+   if(y>265){doc.addPage();y=24;}
+   doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(95,105,115);
+   doc.text(plain('Relatorio da comparacao anterior a confirmacao de exclusao. Baixar nao remove arquivos.'),margin,y);
+   const pages=doc.internal.getNumberOfPages();
+   for(let i=1;i<=pages;i++){
+    doc.setPage(i);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(100,115,125);
+    doc.text('SIGEM Obras - SPOBRAS | Pagina '+i+' de '+pages,margin,289);
+   }
+   doc.save('SIGEM_SPOBRAS_Conferencia_Lista_Mestra_'+new Date().toISOString().slice(0,10)+'.pdf');
+  }catch(error){masterNotice('Nao foi possivel gerar o relatorio PDF: '+error.message,true);}
  }
-
  async function importMaster(){
   if(masterBusy)return;
   if(!selectedWork||!currentUser){masterNotice('Selecione uma obra e entre no sistema.',true);return;}
