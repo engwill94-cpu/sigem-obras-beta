@@ -49,10 +49,9 @@ async function perform(row,action){
   if(storageError)msg('Registro excluído, mas o arquivo precisa ser removido do armazenamento: '+storageError.message);
   if(selected===row.id){selected=null;clearPreview();}await load();return;
  }
- const popup=action==='view'?window.open('about:blank','_blank'):null;
  const {data,error}=await db.storage.from(BUCKET).createSignedUrl(row.storage_path,120);
- if(error){if(popup)popup.close();msg('Erro ao abrir: '+error.message);return;}
- if(action==='view'){if(popup)popup.location.replace('criteria-viewer.html#'+encodeURIComponent(JSON.stringify({url:data.signedUrl,name:row.nome_arquivo})));else msg('O navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.');}
+ if(error){msg('Erro ao abrir: '+error.message);return;}
+ if(action==='view'){const frame=el('crit-modal-frame');frame.src='criteria-viewer.html#'+encodeURIComponent(JSON.stringify({url:data.signedUrl,name:row.nome_arquivo}));el('crit-modal-title').textContent=row.nome_arquivo;el('crit-modal').classList.remove('hidden');el('crit-modal-close').focus();}
  else{const {data:blob,error:downloadError}=await db.storage.from(BUCKET).download(row.storage_path);
   if(downloadError){msg('Erro no download: '+downloadError.message);return;}
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=row.nome_arquivo;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
@@ -60,6 +59,7 @@ async function perform(row,action){
 }
 function clearPreview(){previewSeq++;el('crit-preview-name').textContent='Nenhum documento selecionado';el('crit-preview-frame').removeAttribute('src');el('crit-preview-frame').classList.add('hidden');el('crit-preview-empty').classList.remove('hidden');}
 async function preview(row){const token=++previewSeq;selected=row.id;render();el('crit-preview-name').textContent=row.nome_arquivo;el('crit-preview-empty').textContent='Carregando PDF...';el('crit-preview-empty').classList.remove('hidden');el('crit-preview-frame').classList.add('hidden');const {data,error}=await db.storage.from(BUCKET).createSignedUrl(row.storage_path,120);if(token!==previewSeq)return;if(error){msg('Erro ao visualizar: '+error.message);return;}el('crit-preview-frame').src=data.signedUrl+'#toolbar=1';el('crit-preview-frame').classList.remove('hidden');el('crit-preview-empty').classList.add('hidden');}
+function closeModal(){el('crit-modal').classList.add('hidden');el('crit-modal-frame').removeAttribute('src');}
 async function upload(){
  if(busy||!selectedWork)return;
  const files=[...el('crit-files').files];if(!files.length){msg('Selecione arquivos.');return;}
@@ -86,5 +86,5 @@ async function upload(){
  }finally{busy=false;el('crit-upload').disabled=false;}
 }
 window.criteriaLoad=load;
-document.addEventListener('DOMContentLoaded',()=>{el('crit-upload')?.addEventListener('click',upload);el('crit-search')?.addEventListener('input',render);});
+document.addEventListener('DOMContentLoaded',()=>{el('crit-upload')?.addEventListener('click',upload);el('crit-search')?.addEventListener('input',render);el('crit-modal-close')?.addEventListener('click',closeModal);el('crit-modal')?.addEventListener('click',e=>{if(e.target===el('crit-modal'))closeModal();});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!el('crit-modal').classList.contains('hidden'))closeModal();});});
 })();
