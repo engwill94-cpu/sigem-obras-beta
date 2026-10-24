@@ -42,6 +42,7 @@ window.sigemIndexarNovoArquivo=async function(table,obra){
   if(error||!data?.length)return;
   const {error:callError}=await db.functions.invoke('sigem-indexar-documento',{body:{id:data[0].id}});
   if(callError)console.warn('Indexação pendente para processamento:',callError.message);
+  else if(data?.status==='falhou')console.warn('Indexação falhou:',data.erro);
  }catch(e){console.warn('Indexação pendente:',e);}
 };
 async function limparBibliotecas(){
