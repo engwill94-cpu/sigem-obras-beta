@@ -134,3 +134,16 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 .idx-ocr-box{position:absolute;box-sizing:border-box;background:rgba(255,228,0,.40);border:1px solid rgba(201,140,0,.7);border-radius:2px;pointer-events:none}
 .idx-ocr-box-active{background:rgba(255,220,0,.72);outline:2px solid #d08b00}
 .idx-ocr-notice{max-width:950px;margin:10px auto;background:#fff7df;border:1px solid #e5ca82;border-radius:6px;padding:10px 14px;text-align:left;font-size:13px;color:#684c11}
+
+/* Visualização estruturada de abas Excel */
+.idx-sheet-panel{margin:12px auto;max-width:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden}
+.idx-sheet-info{padding:10px 14px;font-weight:600;background:#f1f5f9;color:#334155}
+.idx-sheet-scroll{overflow:auto;max-height:68vh;position:relative}
+.idx-sheet-table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;min-width:100%;font:12px Arial,sans-serif;color:#202124}
+.idx-sheet-table th,.idx-sheet-table td{border-right:1px solid #d5dce5;border-bottom:1px solid #d5dce5;padding:4px 6px;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:middle}
+.idx-sheet-table th{position:sticky;top:0;z-index:2;background:#e9eef4;color:#475569;text-align:center;font-weight:600}
+.idx-sheet-table tbody th{position:sticky;left:0;z-index:1;background:#e9eef4}
+.idx-sheet-table thead th:first-child{left:0;z-index:3}
+.idx-sheet-table td mark{background:#ffe000;color:#111;padding:1px 0}
+.idx-sheet-table td.idx-sheet-selected{outline:3px solid #df9a00;outline-offset:-3px;background:#fff0a6!important}
+.idx-sheet-note{font-size:12px;color:#64748b;margin:10px auto;max-width:1000px}
