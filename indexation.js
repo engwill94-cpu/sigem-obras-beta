@@ -118,15 +118,14 @@ el('idx-pause').addEventListener('click',()=>{batchStop=true;status('Pausa solic
 
 window.sigemIndexarNovoArquivo=async function(table,obra){
  try{
-  const {data,error}=await db.from('documento_indexacao').select('id').eq('obra_id',obra).eq('origem_tabela',table).eq('status','pendente').order('criado_em',{ascending:false}).limit(1);
-  if(error||!data?.length)return;
-  const {error:callError}=await db.functions.invoke('sigem-indexar-documento',{body:{id:data[0].id}});
-  if(callError)console.warn('Indexação pendente para processamento:',callError.message);
-  else if(data?.status==='falhou'){
-   if(/OCR necessário|sem camada textual/i.test(data.erro||'')){
-    try{await window.sigemOcrDocumento(data.id||data[0]?.id,()=>{});}catch(e){console.warn('OCR pendente:',e);}
-   }else console.warn('Indexação falhou:',data.erro);
-  }
+  const {data:jobs,error}=await db.from('documento_indexacao').select('id').eq('obra_id',obra).eq('origem_tabela',table).eq('status','pendente').order('criado_em',{ascending:false}).limit(1);
+  if(error||!jobs?.length)return;
+  const id=jobs[0].id;
+  const {data:result,error:callError}=await db.functions.invoke('sigem-indexar-documento',{body:{id}});
+  if(callError){console.warn('Indexação pendente para processamento:',callError.message);return;}
+  if(result?.status==='falhou'&&/OCR necessário|sem camada textual/i.test(result.erro||'')){
+   try{await window.sigemOcrDocumento(id,()=>{});}catch(e){console.warn('OCR pendente:',e);}
+  }else if(result?.status==='falhou')console.warn('Indexação falhou:',result.erro);
  }catch(e){console.warn('Indexação pendente:',e);}
 };
 async function limparBibliotecas(){
