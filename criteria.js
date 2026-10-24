@@ -66,7 +66,7 @@ async function upload(){
  try{
   for(const file of files){
    const type=ext(file.name);
-   if(!type==='pdf'||file.size===0||file.size>MAX){errors.push(file.name+': apenas arquivos PDF de até 500 MB são permitidos');continue;}
+   if(type!=='pdf'||file.size===0||file.size>MAX){errors.push(file.name+': apenas arquivos PDF de até 500 MB são permitidos');continue;}
    let path=null;
    try{
     const signature=new Uint8Array(await file.slice(0,5).arrayBuffer());if(String.fromCharCode(...signature)!=='%PDF-')throw Error('O conteúdo do arquivo não é um PDF válido.');
