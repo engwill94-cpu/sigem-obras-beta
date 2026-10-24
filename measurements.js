@@ -47,7 +47,7 @@
    for(let i=0;i<files.length;i++){
     const file=files[i],type=ext(file.name);
     status('Processando '+(i+1)+' de '+files.length+': '+file.name);
-    if(!['xls','xlsx','pdf'].includes(type)){failures.push(file.name+' — formato não permitido');continue;}
+    if(!['xls','xlsx','xlsm','pdf'].includes(type)){failures.push(file.name+' — formato não permitido');continue;}
     if(file.size>MAX||file.size===0){failures.push(file.name+' — tamanho inválido (limite 50 MB)');continue;}
     try{
      if(selectedWork?.id!==id)throw Error('A obra selecionada foi alterada.');
