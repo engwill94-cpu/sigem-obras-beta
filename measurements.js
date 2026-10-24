@@ -33,7 +33,9 @@
    if(!window.pdfjsLib)throw Error('Leitor de PDF indisponível.');
    const pdfjs=window.pdfjsLib;pdfjs.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
    const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-   try{const page=await pdf.getPage(1),content=await page.getTextContent();const text=content.items.map(x=>x.str||'').join(' ');return findMonth(text);}finally{await pdf.destroy();}
+   try{const page=await pdf.getPage(1),content=await page.getTextContent();const items=content.items.filter(x=>typeof x.str==='string');const text=items.map(x=>x.str).join(' ');let found=findMonth(text);if(found)return found;
+    const positioned=items.map(x=>({text:x.str,y:Math.round((x.transform?.[5]||0)/5),x:x.transform?.[4]||0})).sort((a,b)=>b.y-a.y||a.x-b.x);found=findMonth(positioned.map(x=>x.text).join(' '));return found;
+   }finally{await pdf.destroy();}
   }
   if(!window.XLSX)throw Error('Leitor de Excel indisponível.');
   const wb=window.XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
@@ -58,7 +60,7 @@
   for(const row of visible){
    const item=make('div','med-file-row'),icon=make('span','med-file-icon',row.formato==='pdf'?'▤':'▦');
    const info=make('div','med-file-info'),name=make('strong','',row.nome_arquivo),meta=make('small','',fmt(row.formato)+' · '+size(row.tamanho_bytes)+' · '+date(row.created_at));
-   info.append(name,meta);const ref=make('div','med-file-competence');ref.append(make('span','','MÊS DE REFERÊNCIA'),make('strong','',competence(row.competencia)));const edit=make('button','med-ref-edit','Editar');edit.type='button';edit.addEventListener('click',()=>editCompetence(row));ref.append(edit);const actions=make('div','med-file-actions');
+   info.append(name,meta);const ref=make('div','med-file-competence');ref.append(make('span','','MÊS DE REFERÊNCIA'),make('strong','',competence(row.competencia)));const edit=make('button','med-ref-edit','Editar');edit.type='button';edit.addEventListener('click',()=>editCompetence(row));ref.append(edit);if(!row.competencia){const retry=make('button','med-ref-edit','Identificar novamente');retry.type='button';retry.addEventListener('click',()=>retryCompetence(row));ref.append(retry);}const actions=make('div','med-file-actions');
    if(row.formato==='pdf'){const view=make('button','','Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(row));actions.append(view);}
    const down=make('button','','Baixar');down.type='button';down.addEventListener('click',()=>download(row));actions.append(down);
    const del=make('button','med-delete','Excluir');del.type='button';del.addEventListener('click',()=>askDelete(row));actions.append(del);
@@ -103,6 +105,16 @@
    if(selectedWork?.id===id)await load();
    status((added?added+' arquivo(s) cadastrado(s).':'Nenhum arquivo cadastrado.')+(failures.length?'\nNão cadastrados:\n'+failures.join('\n'):'')+(unidentified.length?'\nReferência não identificada (use Editar): '+unidentified.join(', '):''));
   }finally{busy=false;el('med-upload').disabled=false;}
+ }
+ async function retryCompetence(row){
+  if(busy||selectedWork?.id!==row.obra_id)return;
+  busy=true;status('Analisando a capa de '+row.nome_arquivo+'...');
+  try{const {data,error}=await db.storage.from(BUCKET).download(row.storage_path);if(error)throw error;
+   const file=new File([data],row.nome_arquivo,{type:data.type});const month=await detectMonth(file,row.formato);
+   if(!month){status('Não foi possível identificar a referência na capa de '+row.nome_arquivo+'. Se o PDF for digitalizado como imagem, será necessário OCR.');return;}
+   const {error:saveError}=await db.from(TABLE).update({competencia:month+'-01'}).eq('id',row.id).eq('obra_id',row.obra_id);if(saveError)throw saveError;
+   row.competencia=month+'-01';render();status('Referência identificada: '+competence(row.competencia));
+  }catch(error){status('Erro ao analisar a capa: '+error.message);}finally{busy=false;}
  }
  function editCompetence(row){editTarget=row;el('med-edit-file').textContent=row.nome_arquivo;el('med-edit-month').value=row.competencia?.slice(0,7)||'';el('med-edit-status').textContent='';el('med-edit-competence').classList.remove('hidden');}
  function closeEdit(){el('med-edit-competence').classList.add('hidden');editTarget=null;}
