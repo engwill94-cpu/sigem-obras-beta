@@ -13,15 +13,31 @@ async function load(showFeedback=false){
  const counts={};for(const r of records)counts[r.status]=(counts[r.status]||0)+1;
  el('idx-counts').textContent=records.length+' arquivo(s) · '+(counts.concluido||0)+' concluído(s) · '+(counts.pendente||0)+' pendente(s) · '+(counts.falhou||0)+' falha(s) · '+(counts.processando||0)+' processando';
  if(showFeedback)status('Situação atualizada às '+new Date().toLocaleTimeString('pt-BR')+'.');
- el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
+ el('idx-list').innerHTML=records.length?records.map(r=>'<div class="idx-item"><div><strong>'+escape(r.nome_arquivo)+'</strong><small>'+escape(names[r.origem_tabela]||r.origem_tabela)+' · '+escape(r.status)+(r.total_paginas?' · '+r.total_paginas+' página(s)':'')+(r.total_trechos?' · '+r.total_trechos+' trecho(s)':'')+'</small>'+(r.erro?'<small class="idx-error">'+escape(r.erro)+'</small>':'')+'</div>'+(r.status==='pendente'?'<button type="button" data-index-id="'+escape(r.id)+'">Processar</button>':r.status==='falhou'&&/OCR necessário|sem camada textual/i.test(r.erro||'')?'<button type="button" data-ocr-id="'+escape(r.id)+'">Aplicar OCR</button>':'')+'</div>').join(''):'Nenhum documento cadastrado na fila desta obra.';
  el('idx-list').querySelectorAll('[data-index-id]').forEach(b=>b.addEventListener('click',()=>process(b.dataset.indexId)));
+ el('idx-list').querySelectorAll('[data-ocr-id]').forEach(b=>b.addEventListener('click',()=>aplicarOcr(b.dataset.ocrId)));
 }
+async function aplicarOcr(id){
+ if(busy||batchRunning)return;
+ busy=true;el('idx-next').disabled=true;el('idx-batch').disabled=true;
+ try{
+  const result=await window.sigemOcrDocumento(id,status);
+  status(result?.status==='concluido'?'OCR concluído: '+result.trechos+' trechos pesquisáveis.':'OCR não realizado: '+(result?.status||'indisponível'));
+ }catch(e){status('OCR não concluído: '+(e.message||e));}
+ finally{busy=false;el('idx-next').disabled=false;el('idx-batch').disabled=false;await load();}
+}
+
 async function process(id){
  if(busy)return;
  busy=true;el('idx-next').disabled=true;status('Processando documento. Aguarde...');
  try{
   const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:id?{id}:{}});
   if(error){let detail=error.message;try{const body=await error.context?.json();detail=body?.error||body?.message||detail;}catch{}throw Error(detail);}
+  if(data?.status==='falhou'&&/OCR necessário|sem camada textual/i.test(data.erro||'')){
+   const result=await window.sigemOcrDocumento(id||data.id,status);
+   status(result?.status==='concluido'?'OCR concluído: '+result.trechos+' trechos.':'OCR pendente.');
+   return;
+  }
   status(data?.status==='concluido'?'Documento indexado: '+data.trechos+' trechos.':data?.status==='falhou'?'Processamento não concluído: '+data.erro:data?.status==='sem_pendencias'?'Não há documentos pendentes.':'Resultado: '+(data?.status||'indisponível'));
  }catch(e){status('Falha ao chamar o processador: '+(e.message||e));}
  finally{busy=false;el('idx-next').disabled=false;await load();}
@@ -77,7 +93,12 @@ async function batch(){
     const {data,error}=await db.functions.invoke('sigem-indexar-documento',{body:{id:item.id}});
     if(error){let message=error.message;try{message=(await error.context?.json())?.error||message;}catch{}throw Error(message);}
     if(data?.status==='concluido')completed++;
-    else if(data?.status==='falhou')failed++;
+    else if(data?.status==='falhou'){
+     if(/OCR necessário|sem camada textual/i.test(data.erro||'')){
+      try{const ocr=await window.sigemOcrDocumento(item.id,status);if(ocr?.status==='concluido')completed++;else failed++;}
+      catch(e){failed++;console.warn('OCR pendente:',item.nome_arquivo,e);}
+     }else failed++;
+    }
    }catch(e){
     failed++;
     console.warn('Falha no lote:',item.nome_arquivo,e);
@@ -101,7 +122,11 @@ window.sigemIndexarNovoArquivo=async function(table,obra){
   if(error||!data?.length)return;
   const {error:callError}=await db.functions.invoke('sigem-indexar-documento',{body:{id:data[0].id}});
   if(callError)console.warn('Indexação pendente para processamento:',callError.message);
-  else if(data?.status==='falhou')console.warn('Indexação falhou:',data.erro);
+  else if(data?.status==='falhou'){
+   if(/OCR necessário|sem camada textual/i.test(data.erro||'')){
+    try{await window.sigemOcrDocumento(data.id||data[0]?.id,()=>{});}catch(e){console.warn('OCR pendente:',e);}
+   }else console.warn('Indexação falhou:',data.erro);
+  }
  }catch(e){console.warn('Indexação pendente:',e);}
 };
 async function limparBibliotecas(){
