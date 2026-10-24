@@ -34,7 +34,14 @@
    const pdfjs=window.pdfjsLib;pdfjs.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
    const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
    try{const page=await pdf.getPage(1),content=await page.getTextContent();const items=content.items.filter(x=>typeof x.str==='string');const text=items.map(x=>x.str).join(' ');let found=findMonth(text);if(found)return found;
-    const positioned=items.map(x=>({text:x.str,y:Math.round((x.transform?.[5]||0)/5),x:x.transform?.[4]||0})).sort((a,b)=>b.y-a.y||a.x-b.x);found=findMonth(positioned.map(x=>x.text).join(' '));return found;
+    const positioned=items.map(x=>({text:x.str,y:Math.round((x.transform?.[5]||0)/5),x:x.transform?.[4]||0})).sort((a,b)=>b.y-a.y||a.x-b.x);found=findMonth(positioned.map(x=>x.text).join(' '));if(found)return found;
+    if(!window.Tesseract)throw Error('OCR indisponível. Verifique o carregamento do módulo de reconhecimento.');
+    status('Capa digitalizada detectada: executando OCR para identificar o período...');
+    const viewport=page.getViewport({scale:2});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw Error('Não foi possível preparar a imagem da capa.');
+    await page.render({canvasContext:ctx,viewport}).promise;
+    const worker=await window.Tesseract.createWorker('por',1,{logger:m=>{if(m.status==='recognizing text')status('Reconhecendo texto da capa: '+Math.round(m.progress*100)+'%');}});
+    try{const result=await worker.recognize(canvas);return findMonth(result.data.text);}finally{await worker.terminate();canvas.width=0;canvas.height=0;}
    }finally{await pdf.destroy();}
   }
   if(!window.XLSX)throw Error('Leitor de Excel indisponível.');
