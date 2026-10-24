@@ -38,9 +38,9 @@
   return [...latest.values()];
  }
  function render(){
-  const list=el('sp-discipline-list'),filter=el('sp-filter'),search=el('sp-search');
-  if(!list||!filter||!search)return;
-  const active=filter.value,term=search.value.trim().toLocaleLowerCase('pt-BR');
+  const list=el('sp-discipline-list'),filter=el('sp-filter');
+  if(!list||!filter)return;
+  const active=filter.value;
   const onlyLatest=!!el('sp-latest-only')?.checked;
   filter.replaceChildren(new Option('Selecione uma disciplina',''));
   for(const [code,name] of Object.entries(DISC))filter.add(new Option(code+' — '+name,code));
@@ -52,7 +52,7 @@
   if(!active){list.append(make('p','sp-library-footnote','Selecione uma disciplina para consultar os arquivos cadastrados.'));return;}
   let rows=records.filter(r=>r.disciplina===active);
   if(onlyLatest)rows=latestRows(rows);
-  rows=rows.filter(r=>!term||[r.nome_arquivo,r.codigo_folha,r.folha,r.revisao,r.formato,DISC[r.disciplina],PHASE[r.fase],TYPES[r.codigo_folha.slice(0,2)]].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(term)));
+  
   rows.sort((a,b)=>a.codigo_folha.localeCompare(b.codigo_folha,'pt-BR',{numeric:true})||revisionRank(b.revisao)[0]-revisionRank(a.revisao)[0]||revisionRank(b.revisao)[1]-revisionRank(a.revisao)[1]);
   if(!rows.length){list.append(make('p','sp-library-footnote','Nenhum projeto encontrado para esta disciplina e filtros.'));return;}
   list.append(make('p','sp-library-result',rows.length+' arquivo(s) · '+active+' — '+DISC[active]));
@@ -145,7 +145,7 @@
   }
  }
  el('sp-upload-button')?.addEventListener('click',()=>{message('Iniciando verificação dos arquivos...');upload().catch(error=>{const btn=el('sp-upload-button');btn.disabled=false;btn.textContent='↑ Verificar e cadastrar projetos';message('Não foi possível concluir a verificação: '+(error?.message||String(error)),true);});});
- el('sp-search')?.addEventListener('input',render);
+ 
  el('sp-filter')?.addEventListener('change',render);
  el('sp-latest-only')?.addEventListener('change',render);
  try{render();}catch(error){message('Erro ao inicializar a biblioteca de projetos: '+(error?.message||String(error)),true);}
