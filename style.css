@@ -85,3 +85,6 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 
 /* Visualizador de critérios: janela sobreposta dentro do SIGEM */
 .crit-view-modal{position:fixed;inset:0;z-index:9999;background:rgba(9,25,43,.76);display:flex;align-items:center;justify-content:center;padding:20px}.crit-view-modal.hidden{display:none}.crit-view-window{width:min(1250px,100%);height:min(92vh,1000px);background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}.crit-view-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 18px;border-bottom:1px solid #dbe3ed}.crit-view-toolbar strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.crit-view-toolbar button{flex-shrink:0}.crit-view-window iframe{width:100%;flex:1;min-height:0;border:0;background:#f6f8fb}@media(max-width:600px){.crit-view-modal{padding:6px}.crit-view-window{height:96vh}.crit-view-toolbar{padding:8px}}
+
+/* Critérios: clique na linha seleciona a prévia, botão Visualizar abre aba */
+.crit-layout .med-file-row{cursor:pointer}.crit-layout .med-file-row:focus-visible{outline:2px solid #087281;outline-offset:2px}.crit-layout .med-file-row.active{outline:2px solid #087281;outline-offset:-2px}
