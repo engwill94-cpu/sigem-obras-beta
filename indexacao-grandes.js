@@ -20,8 +20,9 @@
   if(downloadError)throw downloadError;
   if(ext==='pdf'&&file.size>MAX_PDF)throw Error('PDF acima de 120 MB.');
   if(ext!=='pdf'&&file.size>MAX_EXCEL)throw Error('Planilha acima de 250 MB.');
-  let pdf=null,worker=null,started=false,count=0,pages=0,method=ext==='pdf'?'pdf':'excel';
+  let pdf=null,worker=null,started=false,count=0,pages=0,method=ext==='pdf'?'pdf':'excel',lastPulse=0;
   const buffer=[];
+  async function pulse(){if(Date.now()-lastPulse>45000){await invoke({fase:'pulso',id});lastPulse=Date.now();}}
   async function flush(){
    if(!buffer.length)return;
    const batch=buffer.splice(0,buffer.length);
@@ -41,7 +42,7 @@
    }else{
     if(!window.XLSX)throw Error('Leitor Excel indisponível.');
    }
-   await invoke({fase:'iniciar',id});started=true;
+   await invoke({fase:'iniciar',id});started=true;lastPulse=Date.now();
    if(pdf){
     for(let n=1;n<=pages;n++){
      notify('PDF: página '+n+' de '+pages+' — '+name+' · '+count+' trechos gravados');
@@ -59,8 +60,8 @@
      append(text,{pagina:n});
      page.cleanup();
      if(buffer.length>=60||n===pages)await flush();
-     // Envia pulso de atividade inclusive em páginas sem texto.
-     if(!buffer.length&&n%5===0)await db.from('documento_indexacao').select('id').eq('id',id).limit(1);
+     await pulse();
+
     }
    }else{
     notify('Lendo estrutura Excel: '+name);
@@ -84,8 +85,9 @@
       }
       if(row.length)append(row.join(' | '),{aba:sheetName,celula:XLSX.utils.encode_cell({r,c:range.s.c})});
       if(buffer.length>=60)await flush();
+      if(r%100===0)await pulse();
      }
-     await flush();
+     await flush();await pulse();
     }
    }
    if(!count)throw Error('Arquivo sem conteúdo textual extraível.');
