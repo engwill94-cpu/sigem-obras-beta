@@ -147,3 +147,20 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 .idx-sheet-table td mark{background:#ffe000;color:#111;padding:1px 0}
 .idx-sheet-table td.idx-sheet-selected{outline:3px solid #df9a00;outline-offset:-3px;background:#fff0a6!important}
 .idx-sheet-note{font-size:12px;color:#64748b;margin:10px auto;max-width:1000px}
+
+/* Exclusao individual de projetos SPOBRAS */
+.sp-project-actions .sp-project-delete{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:30px;padding:6px;background:#fff0f0;color:#b42318;border:1px solid #f3c2bf;border-radius:7px}
+.sp-project-actions .sp-project-delete:hover{background:#ffe0df;color:#8f1d16}
+.sp-project-actions .sp-project-delete:focus-visible{outline:2px solid #b42318;outline-offset:2px}
+.sp-delete-dialog{background:#fff;border-radius:14px;padding:25px;width:min(480px,100%);box-shadow:0 25px 75px #0004}
+.sp-delete-dialog h3{color:#123953;margin:0 0 12px}
+.sp-delete-dialog p{font-size:13px;line-height:1.5;color:#496273}
+.sp-delete-name{font-weight:700;overflow-wrap:anywhere;background:#f3f7fa;padding:10px;border-radius:8px}
+.sp-delete-error{color:#b42318!important;font-weight:700}
+.sp-delete-error:empty{display:none}
+.sp-delete-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.sp-delete-actions button{border-radius:8px;padding:10px 16px;font-weight:700}
+#sp-delete-cancel{background:#eaf2f5;color:#20485c}
+#sp-delete-confirm{background:#bd2922;color:#fff}
+#sp-delete-confirm:hover{background:#9e201b}
+.sp-delete-actions button:disabled{opacity:.55;cursor:wait}
