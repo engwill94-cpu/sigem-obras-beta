@@ -75,6 +75,10 @@
      const view=make('button','','◉ Visualizar');view.type='button';view.addEventListener('click',()=>openPdf(record));actions.append(view);
     }
     const download=make('button','','↓ Download');download.type='button';download.addEventListener('click',()=>downloadFile(record));actions.append(download);
+    const remove=make('button','sp-project-delete');
+    remove.type='button';remove.title='Excluir projeto';remove.setAttribute('aria-label','Excluir projeto '+record.nome_arquivo);
+    remove.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 10v7"/><path d="M14 10v7"/></svg>';
+    remove.addEventListener('click',()=>askDeleteProject(record));actions.append(remove);
     row.append(info,actions);section.append(row);
    }
    list.append(section);
@@ -90,6 +94,44 @@
   records=data||[];render();
  }
  window.spobrasLoad=load;
+ let pendingDelete=null,deleteBusy=false;
+ function closeDeleteProject(){
+  if(deleteBusy)return;
+  pendingDelete=null;el('sp-delete-modal')?.classList.add('hidden');
+ }
+ function askDeleteProject(record){
+  if(deleteBusy||!currentUser||!selectedWork)return;
+  pendingDelete={id:record.id,obra_id:record.obra_id,nome_arquivo:record.nome_arquivo,storage_path:record.storage_path};
+  el('sp-delete-name').textContent=record.nome_arquivo;
+  el('sp-delete-error').textContent='';
+  el('sp-delete-modal').classList.remove('hidden');
+  el('sp-delete-cancel').focus();
+ }
+ async function confirmDeleteProject(){
+  if(deleteBusy||!pendingDelete||!currentUser)return;
+  const target={...pendingDelete};
+  if(selectedWork?.id!==target.obra_id){el('sp-delete-error').textContent='A obra foi alterada. Cancele e tente novamente.';return;}
+  const confirm=el('sp-delete-confirm'),cancel=el('sp-delete-cancel');
+  deleteBusy=true;confirm.disabled=true;cancel.disabled=true;confirm.textContent='Excluindo...';
+  try{
+   const {data:rows,error:lookupError}=await db.from('projetos_spobras').select('id,obra_id,nome_arquivo,storage_path').eq('obra_id',target.obra_id).eq('id',target.id).limit(1);
+   if(lookupError)throw lookupError;
+   const current=rows?.[0];
+   if(!current||current.storage_path!==target.storage_path||current.nome_arquivo!==target.nome_arquivo)throw Error('O projeto foi alterado ou não existe mais. Atualize a biblioteca.');
+   const {data:storageRemoved,error:storageError}=await db.storage.from(BUCKET).remove([current.storage_path]);
+   if(storageError)throw Error('Não foi possível excluir o arquivo do armazenamento: '+storageError.message);
+   if(!storageRemoved?.length)throw Error('A remoção do arquivo no armazenamento não foi confirmada.');
+   const {data:deleted,error:dbError}=await db.from('projetos_spobras').delete().eq('obra_id',target.obra_id).eq('id',target.id).eq('storage_path',current.storage_path).select('id');
+   if(dbError)throw Error('Arquivo removido do armazenamento, mas o banco não confirmou a exclusão: '+dbError.message);
+   if(deleted?.length!==1)throw Error('Arquivo removido do armazenamento, mas o registro não foi excluído. Contate o administrador.');
+   pendingDelete=null;el('sp-delete-modal').classList.add('hidden');
+   if(selectedWork?.id===target.obra_id)await load();
+   message('Projeto excluído: '+target.nome_arquivo);
+  }catch(error){el('sp-delete-error').textContent=error.message||String(error);}
+  finally{deleteBusy=false;confirm.disabled=false;cancel.disabled=false;confirm.textContent='Excluir projeto';}
+ }
+ el('sp-delete-cancel')?.addEventListener('click',closeDeleteProject);
+ el('sp-delete-confirm')?.addEventListener('click',confirmDeleteProject);
  async function openPdf(record){
   const w=window.open('','_blank');
   if(!w){message('O navegador bloqueou a nova aba.');return;}
