@@ -217,7 +217,7 @@
   masterReport=masterLists(report);
   const r=masterReport,body=el('sp-master-results');body.replaceChildren();
   const summary=make('div','sp-master-summary-grid');
-  for(const [label,value] of [['Projetos À Inserir',r.toInsert.length],['Projetos À Remover',r.toRemove.length],['Projetos Atualizados no SIGEM',r.upToDate.length]]){
+  for(const [label,value] of [['Projetos À Inserir',r.toInsert.length],['Projetos À Remover',r.toRemove.length],['Projetos Atualizados no SIGEM',r.upToDate.length],['Total de projetos válidos',r.toInsert.length+r.upToDate.length]]){
    const card=make('div','sp-master-stat');card.append(make('strong','',String(value)),make('span','',label));summary.append(card);
   }
   body.append(make('p','sp-master-report-meta','Lista: '+r.file+' · Conferência: '+r.date),summary,
