@@ -308,7 +308,11 @@
   const toInsert=[],toRemove=[],upToDate=[];
   for(const entry of entries){
    const {sheet,rev,code,remove}=entry;
-   if(remove){toRemove.push({sheet,code});continue;}
+   if(remove){
+    // Só apresentar para remoção o código completo (folha + revisão) existente no SIGEM.
+    if((bySheet.get(sheet)||[]).some(r=>String(r.revisao).toUpperCase()===String(rev).toUpperCase()))toRemove.push({sheet,code});
+    continue;
+   }
    const revisions=[...new Set((bySheet.get(sheet)||[]).map(r=>r.revisao))];
    if(!revisions.length){toInsert.push({sheet,sigem:'Não cadastrado',master:rev});continue;}
    if(revisions.includes(rev))upToDate.push({sheet,sigem:rev,master:rev});
