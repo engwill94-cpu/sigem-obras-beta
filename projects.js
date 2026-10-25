@@ -136,6 +136,8 @@
   }catch(error){notice.textContent='Falha ao gerar ZIP: '+error.message;}
   finally{zipBusy=false;btn.disabled=!visibleRows.length;btn.textContent='↓ Baixar todos (.zip)';}
  }
+ el('sp-filter')?.addEventListener('change',render);
+ el('sp-latest-only')?.addEventListener('change',render);
  el('sp-download-all')?.addEventListener('click',()=>downloadAllVisible());
  async function upload(){
   const btn=el('sp-upload-button'),files=Array.from(el('sp-files').files||[]);
