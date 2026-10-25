@@ -276,7 +276,7 @@
    return pa[2].localeCompare(pb[2],'pt-BR')||Number(pa[3])-Number(pb[3])||Number(pa[1])-Number(pb[1])||a.sheet.localeCompare(b.sheet,'pt-BR',{numeric:true});
   };
   toInsert.sort(order);toRemove.sort(order);upToDate.sort(order);
-  return {obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:history.arquivo_nome,date:new Date().toLocaleString('pt-BR'),total:entries.length,registered:registered.length,toInsert,toRemove,upToDate};
+  return {obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:history.arquivo_nome,date:new Date().toLocaleString('pt-BR'),masterUploadedAt:history.importado_em,total:entries.length,registered:registered.length,toInsert,toRemove,upToDate};
  }
  async function currentMasterStatus(){
   if(masterBusy)return;
@@ -345,23 +345,51 @@
    const r=masterLists(masterReport),doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});
    if(typeof doc.autoTable!=='function')throw Error('Módulo de tabelas PDF indisponível.');
    const plain=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-   doc.setFillColor(12,47,72);doc.rect(0,0,210,34,'F');doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(16);
-   doc.text('SIGEM OBRAS | SPOBRAS',15,17);doc.setFontSize(10);doc.text('Conferencia da Lista Mestra de Projetos',15,25);
+   const uploadDate=r.masterUploadedAt?new Date(r.masterUploadedAt).toLocaleDateString('pt-BR'):'Não informada';
+   // Mesma linguagem visual do popup: cabeçalho, faixa de metadados e cartões de indicadores.
+   doc.setFillColor(12,47,72);doc.rect(0,0,210,35,'F');
+   doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(16);
+   doc.text('SIGEM OBRAS | SPOBRAS',15,17);
+   doc.setFont('helvetica','normal');doc.setFontSize(10);
+   doc.text('Status de Projetos',15,25);
    doc.setTextColor(40,66,82);doc.setFontSize(9);
-   doc.text(doc.splitTextToSize(plain('Obra: '+r.obraNome),180),15,43);
-   doc.text(doc.splitTextToSize(plain('Lista: '+r.file+' | '+r.date),180),15,53);
-   doc.text('A inserir: '+r.toInsert.length+' | A remover: '+r.toRemove.length+' | Atualizados: '+r.upToDate.length,15,67);
-   const section=(title,head,body,start)=>{
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text(plain(title),15,start);
-    doc.autoTable({startY:start+4,margin:{left:15,right:15,bottom:18},head:[head.map(plain)],body:(body.length?body:[['Nenhuma ocorrencia',...head.slice(1).map(()=>'')]]).map(row=>row.map(plain)),theme:'grid',headStyles:{fillColor:[17,77,99]},styles:{fontSize:8,overflow:'linebreak',cellPadding:2.5}});
+   doc.text(doc.splitTextToSize(plain('Obra: '+r.obraNome),180),15,44);
+   doc.text(doc.splitTextToSize(plain('Lista: '+r.file+' | Conferencia: '+r.date),180),15,54);
+   const cards=[
+    [String(r.toInsert.length),'Projetos A Inserir'],
+    [String(r.toRemove.length),'Projetos A Remover'],
+    [String(r.upToDate.length),'Projetos Atualizados no SIGEM'],
+    [String(r.toInsert.length+r.upToDate.length),'Total de projetos validos'],
+    [uploadDate,'Data de envio da Lista Mestra']
+   ];
+   const left=15,top=62,gap=2.5,cardWidth=(180-gap*4)/5,cardHeight=24;
+   for(let i=0;i<cards.length;i++){
+    const x=left+i*(cardWidth+gap),[value,label]=cards[i];
+    doc.setFillColor(239,247,250);doc.setDrawColor(214,231,239);
+    doc.roundedRect(x,top,cardWidth,cardHeight,2,2,'FD');
+    doc.setTextColor(13,101,123);doc.setFont('helvetica','bold');
+    doc.setFontSize(i===4?12:17);doc.text(value,x+3,top+10);
+    doc.setFont('helvetica','normal');doc.setFontSize(7);
+    const labelLines=doc.splitTextToSize(plain(label),cardWidth-6);
+    doc.text(labelLines.slice(0,2),x+3,top+15);
+   }
+   const section=(title,head,body,startY)=>{
+    doc.setTextColor(12,47,72);doc.setFont('helvetica','bold');doc.setFontSize(11);
+    doc.text(plain(title),15,startY);
+    doc.autoTable({startY:startY+4,margin:{left:15,right:15,bottom:18},head:[head.map(plain)],
+     body:(body.length?body:[['Nenhuma ocorrencia',...head.slice(1).map(()=>'')]]).map(row=>row.map(plain)),
+     theme:'striped',headStyles:{fillColor:[232,242,247],textColor:[12,47,72],fontStyle:'bold'},
+     alternateRowStyles:{fillColor:[246,250,252]},styles:{fontSize:8,overflow:'linebreak',cellPadding:2.5,textColor:[54,80,98]},
+     didDrawPage:()=>{}});
    };
-   section('1. PROJETOS A INSERIR',['Referencia do projeto','Revisao SIGEM','Revisao Lista Mestra'],r.toInsert.map(x=>[x.sheet,x.sigem,x.master]),78);
-   let y=(doc.lastAutoTable?.finalY||85)+12;if(y>255){doc.addPage();y=24;}
+   section('1. PROJETOS A INSERIR',['Referencia do projeto','Revisao SIGEM','Revisao Lista Mestra'],r.toInsert.map(x=>[x.sheet,x.sigem,x.master]),98);
+   let y=(doc.lastAutoTable?.finalY||105)+12;if(y>255){doc.addPage();y=24;}
    section('2. PROJETOS A REMOVER',['Referencia do projeto'],r.toRemove.map(x=>[x.code]),y);
-   y=(doc.lastAutoTable?.finalY||85)+12;if(y>255){doc.addPage();y=24;}
+   y=(doc.lastAutoTable?.finalY||105)+12;if(y>255){doc.addPage();y=24;}
    section('3. PROJETOS ATUALIZADOS NO SIGEM',['Referencia do projeto','Revisao SIGEM','Revisao Lista Mestra'],r.upToDate.map(x=>[x.sheet,x.sigem,x.master]),y);
-   const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(100);doc.text('SIGEM Obras | Pagina '+i+' de '+pages,15,289);}
-   doc.save('SIGEM_SPOBRAS_Conferencia_Lista_Mestra_'+new Date().toISOString().slice(0,10)+'.pdf');
+   const pages=doc.internal.getNumberOfPages();
+   for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(100);doc.text('SIGEM Obras | Pagina '+i+' de '+pages,15,289);}
+   doc.save('SIGEM_SPOBRAS_Status_de_Projetos_'+new Date().toISOString().slice(0,10)+'.pdf');
   }catch(error){masterNotice('Não foi possível gerar o relatório PDF: '+error.message,true);}
  }
  async function importMaster(){
