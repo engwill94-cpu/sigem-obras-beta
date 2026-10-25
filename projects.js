@@ -354,7 +354,6 @@
    doc.text('Status de Projetos',15,25);
    doc.setTextColor(40,66,82);doc.setFontSize(9);
    doc.text(doc.splitTextToSize(plain('Obra: '+r.obraNome),180),15,44);
-   doc.text(doc.splitTextToSize(plain('Lista: '+r.file+' | Conferencia: '+r.date),180),15,54);
    const cards=[
     [String(r.toInsert.length),'Projetos A Inserir'],
     [String(r.toRemove.length),'Projetos A Remover'],
