@@ -259,11 +259,11 @@
    table('Distribuicao por fase',['Fase','Arquivos','Folhas'],[4,5,6].map(f=>[clean(PHASE[f]),data.filter(r=>r.fase===f).length,new Set(data.filter(r=>r.fase===f).map(r=>r.codigo_folha)).size]));
    table('Folhas com mais de uma revisao',['Folha','Revisoes cadastradas'],revised.sort((a,b)=>a[0].localeCompare(b[0],'pt-BR',{numeric:true})).map(([sheet,items])=>[sheet,[...new Set(items.map(r=>r.revisao))].sort().join(', ')]));
    if(history){
-    const x=history.dados;
-    table('Ultima Lista Mestra: '+history.arquivo_nome,['Indicador','Resultado'],[['Importada em',new Date(history.importado_em).toLocaleString('pt-BR')],['Folhas na lista',x.total],['Revisoes obsoletas na comparacao',x.obsolete.length],['Folhas ausentes na comparacao',x.missing.length],['Folhas canceladas na comparacao',x.cancelled.length],['Exclusao confirmada',history.exclusao_confirmada_em?'Sim':'Nao']]);
-    table('Pendencias de revisao da ultima conferencia',['Folha','SIGEM na importacao','Revisao vigente'],x.obsolete.map(o=>[o.entry.sheet,o.revisions.join(', '),o.entry.rev]));
-    table('Folhas ausentes na ultima conferencia',['Folha','Revisao vigente'],x.missing.map(o=>[o.sheet,o.rev]));
-    table('Cancelamentos identificados na ultima conferencia',['Folha','Arquivos identificados'],x.cancelled.map(o=>[o.entry.sheet,o.files.length]));
+    const x=masterLists(history.dados);
+    table('Ultima Lista Mestra: '+history.arquivo_nome,['Indicador','Resultado'],[['Importada em',new Date(history.importado_em).toLocaleString('pt-BR')],['Folhas na lista',x.total],['Projetos a inserir',x.toInsert.length],['Projetos a remover',x.toRemove.length],['Projetos atualizados',x.upToDate.length]]);
+    table('Projetos a inserir',['Referencia','Revisao SIGEM','Revisao Lista Mestra'],x.toInsert.map(o=>[o.sheet,o.sigem,o.master]));
+    table('Projetos a remover',['Referencia'],x.toRemove.map(o=>[o.code]));
+    table('Projetos atualizados no SIGEM',['Referencia','Revisao SIGEM','Revisao Lista Mestra'],x.upToDate.map(o=>[o.sheet,o.sigem,o.master]));
    }else table('Lista Mestra',['Situacao','Informacao'],[['Sem importacao registrada','Importe uma Lista Mestra para analisar revisoes vigentes']]);
    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(100);doc.text('SIGEM Obras - SPOBRAS | Pagina '+i+' de '+pages,15,290);}
    doc.save('SIGEM_SPOBRAS_Relatorio_Gerencial_'+new Date().toISOString().slice(0,10)+'.pdf');
