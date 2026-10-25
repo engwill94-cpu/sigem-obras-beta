@@ -229,13 +229,71 @@
   el('sp-master-ok').textContent='OK';
   el('sp-master-download').disabled=false;el('sp-master-ok').disabled=false;masterPopup(true);
  }
- async function openLastMaster(){
+ function normalizeMaster(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toLowerCase();}
+ function parseMasterRows(rows){
+  const master=new Map(),invalid=[],conflicts=[];let candidates=0;
+  for(let i=0;i<rows.length;i++){
+   const row=rows[i],a=String(row[0]??'').trim();if(!a)continue;
+   const parsed=masterCode(a);
+   if(!parsed){if(/^(DE|RT|MC)-/i.test(a))invalid.push('Linha '+(i+1)+': '+a);continue;}
+   candidates++;
+   const status=normalizeMaster(row[9]),alternative=normalizeMaster(row[10]).includes('alternativa nao adotada');
+   const remove=alternative||!(status==='aprovado'||status==='aprovado com ressalvas');
+   const key=parsed.code;
+   const prev=master.get(key);
+   if(prev&&prev.remove!==remove)conflicts.push(parsed.code+' (linhas '+prev.line+' e '+(i+1)+')');
+   else master.set(key,{...parsed,remove,line:i+1});
+  }
+  if(!candidates)throw Error('Nenhum código válido foi encontrado na coluna A da primeira aba.');
+  if(invalid.length||conflicts.length)throw Error('Lista Mestra inconsistente. '+(invalid.length?'Códigos inválidos: '+invalid.slice(0,6).join('; ')+'. ':'')+(conflicts.length?'Registros conflitantes: '+conflicts.slice(0,6).join('; '):''));
+  return [...master.values()].map(({sheet,rev,code,remove})=>({sheet,rev,code,remove}));
+ }
+ async function queryRegistered(obra){
+  const all=[];let offset=0;
+  while(true){
+   const {data,error}=await db.from('projetos_spobras').select('codigo_folha,revisao,formato').eq('obra_id',obra).range(offset,offset+999);
+   if(error)throw error;
+   all.push(...(data||[]));if(!data||data.length<1000)break;offset+=1000;
+  }
+  if(selectedWork?.id!==obra)throw Error('A obra foi alterada durante a consulta. Tente novamente.');
+  return all;
+ }
+ function calculateMaster(entries,registered,history,obra){
+  const bySheet=new Map();
+  for(const r of registered){if(!bySheet.has(r.codigo_folha))bySheet.set(r.codigo_folha,[]);bySheet.get(r.codigo_folha).push(r);}
+  const toInsert=[],toRemove=[],upToDate=[];
+  for(const entry of entries){
+   const {sheet,rev,code,remove}=entry;
+   if(remove){toRemove.push({sheet,code});continue;}
+   const revisions=[...new Set((bySheet.get(sheet)||[]).map(r=>r.revisao))];
+   if(!revisions.length){toInsert.push({sheet,sigem:'Não cadastrado',master:rev});continue;}
+   if(revisions.includes(rev))upToDate.push({sheet,sigem:rev,master:rev});
+   else toInsert.push({sheet,sigem:revisions.join(', '),master:rev});
+  }
+  const order=(a,b)=>{
+   const pa=a.sheet.match(/-([456])([A-Z])-00-([0-9]+)$/),pb=b.sheet.match(/-([456])([A-Z])-00-([0-9]+)$/);
+   if(!pa||!pb)return a.sheet.localeCompare(b.sheet,'pt-BR',{numeric:true});
+   return pa[2].localeCompare(pb[2],'pt-BR')||Number(pa[3])-Number(pb[3])||Number(pa[1])-Number(pb[1])||a.sheet.localeCompare(b.sheet,'pt-BR',{numeric:true});
+  };
+  toInsert.sort(order);toRemove.sort(order);upToDate.sort(order);
+  return {obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:history.arquivo_nome,date:new Date().toLocaleString('pt-BR'),total:entries.length,registered:registered.length,toInsert,toRemove,upToDate};
+ }
+ async function currentMasterStatus(){
+  if(masterBusy)return;
+  if(!selectedWork||!currentUser){alert('Selecione uma obra e entre no sistema.');return;}
+  const btn=el('sp-last-master'),obra=selectedWork.id;
+  masterBusy=true;btn.disabled=true;btn.textContent='Analisando projetos...';
   try{
    const history=await latestMasterHistory();
-   if(!history){alert('Ainda não existe uma Lista Mestra salva para esta obra. Importe uma planilha para iniciar o histórico.');return;}
+   if(!history){alert('Não existe Lista Mestra cadastrada para esta obra. Importe a planilha primeiro.');return;}
+   const entries=history.dados?.masterEntries;
+   if(!Array.isArray(entries))throw Error('A última Lista Mestra foi importada em uma versão anterior, que armazenava somente o resultado da comparação e não os dados originais das colunas A, J e K. Reimporte o arquivo '+history.arquivo_nome+' para habilitar a análise atualizada.');
+   const registered=await queryRegistered(obra);
+   const report=calculateMaster(entries,registered,history,obra);
    masterPending=null;masterHistoryId=null;
-   showMasterReport(history.dados,true,history);
-  }catch(error){alert('Não foi possível consultar a última atualização: '+error.message);}
+   showMasterReport(report,true,history);
+  }catch(error){alert('Não foi possível gerar o Status de Projetos: '+error.message);}
+  finally{masterBusy=false;btn.disabled=false;btn.textContent='Status de Projetos';}
  }
  function managerPdf(){
   if(!selectedWork){alert('Selecione uma obra.');return;}
@@ -259,7 +317,7 @@
    table('Distribuicao por fase',['Fase','Arquivos','Folhas'],[4,5,6].map(f=>[clean(PHASE[f]),data.filter(r=>r.fase===f).length,new Set(data.filter(r=>r.fase===f).map(r=>r.codigo_folha)).size]));
    table('Folhas com mais de uma revisao',['Folha','Revisoes cadastradas'],revised.sort((a,b)=>a[0].localeCompare(b[0],'pt-BR',{numeric:true})).map(([sheet,items])=>[sheet,[...new Set(items.map(r=>r.revisao))].sort().join(', ')]));
    if(history){
-    const x=masterLists(history.dados);
+    const x=Array.isArray(history.dados?.masterEntries)?calculateMaster(history.dados.masterEntries,await queryRegistered(selectedWork.id),history,selectedWork.id):masterLists(history.dados);
     table('Ultima Lista Mestra: '+history.arquivo_nome,['Indicador','Resultado'],[['Importada em',new Date(history.importado_em).toLocaleString('pt-BR')],['Folhas na lista',x.total],['Projetos a inserir',x.toInsert.length],['Projetos a remover',x.toRemove.length],['Projetos atualizados',x.upToDate.length]]);
     table('Projetos a inserir',['Referencia','Revisao SIGEM','Revisao Lista Mestra'],x.toInsert.map(o=>[o.sheet,o.sigem,o.master]));
     table('Projetos a remover',['Referencia'],x.toRemove.map(o=>[o.code]));
@@ -314,72 +372,30 @@
   if(!/\.(xls|xlsx)$/i.test(file.name)){masterNotice('Formato inválido. Selecione .xls ou .xlsx.',true);return;}
   if(file.size>15*1024*1024){masterNotice('A planilha excede 15 MB.',true);return;}
   if(typeof XLSX==='undefined'){masterNotice('Leitor de Excel indisponível. Recarregue a página.',true);return;}
-  const btn=el('sp-master-import');masterBusy=true;btn.disabled=true;btn.textContent='Comparando projetos...';
+  const btn=el('sp-master-import');masterBusy=true;btn.disabled=true;btn.textContent='Cadastrando Lista Mestra...';
   try{
-   masterReport=null;el('sp-master-download').disabled=true;
    const obra=selectedWork.id;
    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
    const sheet=wb.Sheets[wb.SheetNames[0]];
    if(!sheet)throw Error('A planilha não contém uma aba válida.');
    const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:false});
-   const master=new Map(),invalid=[],conflicts=[];
-   let candidates=0;
-   const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toLowerCase();
-   for(let i=0;i<rows.length;i++){
-    const row=rows[i],a=String(row[0]??'').trim();if(!a)continue;
-    const parsed=masterCode(a);
-    if(!parsed){if(/^(DE|RT|MC)-/i.test(a))invalid.push('Linha '+(i+1)+': '+a);continue;}
-    candidates++;
-    const status=norm(row[9]),alternative=norm(row[10])==='alternativa nao adotada';
-    const remove=alternative||!(status==='aprovado'||status==='aprovado com ressalvas');
-    const prev=master.get(parsed.sheet);
-    if(prev&&(prev.rev!==parsed.rev||prev.remove!==remove))conflicts.push(parsed.sheet+' (linhas '+prev.line+' e '+(i+1)+')');
-    else master.set(parsed.sheet,{...parsed,remove,line:i+1});
-   }
-   if(!candidates)throw Error('Nenhum código válido foi encontrado na coluna A da primeira aba.');
-   if(invalid.length||conflicts.length)throw Error('Importação bloqueada por inconsistências. '+(invalid.length?'Códigos inválidos: '+invalid.slice(0,6).join('; ')+'. ':'')+(conflicts.length?'Folhas conflitantes: '+conflicts.slice(0,6).join('; '):''));
-   // Consulta completa, inclusive quando houver mais de mil arquivos.
-   let all=[],offset=0;
-   while(true){
-    const {data,error}=await db.from('projetos_spobras').select('id,codigo_folha,revisao,formato,nome_arquivo,storage_path').eq('obra_id',obra).range(offset,offset+999);
-    if(error)throw error;
-    all.push(...(data||[]));if(!data||data.length<1000)break;offset+=1000;
-   }
+   const masterEntries=parseMasterRows(rows);
    if(selectedWork?.id!==obra)throw Error('A obra foi alterada. Importe novamente.');
-   const bySheet=new Map();
-   for(const r of all){if(!bySheet.has(r.codigo_folha))bySheet.set(r.codigo_folha,[]);bySheet.get(r.codigo_folha).push(r);}
-   const toInsert=[],toRemove=[],upToDate=[];
-   for(const [sheet,entry] of master){
-    const registered=bySheet.get(sheet)||[];
-    if(entry.remove){toRemove.push({sheet,code:entry.code});continue;}
-    if(!registered.length){toInsert.push({sheet,sigem:'Não cadastrado',master:entry.rev});continue;}
-    const revisions=[...new Set(registered.map(r=>r.revisao))];
-    if(revisions.includes(entry.rev))upToDate.push({sheet,sigem:entry.rev,master:entry.rev});
-    else toInsert.push({sheet,sigem:revisions.join(', '),master:entry.rev});
-   }
-   const orderMaster=(a,b)=>{
-    const ca=a.sheet,cb=b.sheet,pa=ca.match(/-([456])([A-Z])-00-([0-9]+)$/),pb=cb.match(/-([456])([A-Z])-00-([0-9]+)$/);
-    if(!pa||!pb)return ca.localeCompare(cb,'pt-BR',{numeric:true});
-    return pa[2].localeCompare(pb[2],'pt-BR')||Number(pa[3])-Number(pb[3])||Number(pa[1])-Number(pb[1])||ca.localeCompare(cb,'pt-BR',{numeric:true});
-   };
-   toInsert.sort(orderMaster);toRemove.sort(orderMaster);upToDate.sort(orderMaster);
-   masterReport={obra,obraNome:selectedWork?.nome||selectedWork?.codigo||String(obra),file:file.name,date:new Date().toLocaleString('pt-BR'),total:master.size,registered:all.length,toInsert,toRemove,upToDate};
-   const snapshot={...masterReport};
-   const {data:saved,error:saveError}=await db.from('spobras_lista_mestra_historico').insert({obra_id:obra,arquivo_nome:file.name,importado_por:currentUser.id,dados:snapshot}).select('id').single();
-   if(saveError)throw Error('Não foi possível salvar a última Lista Mestra: '+saveError.message);
-   masterHistoryId=saved.id;
-   showMasterReport(masterReport,false);
-   masterPending=null;
-   el('sp-master-ok').disabled=false;
-   el('sp-master-ok').textContent='OK';
-   masterPopup(true);
-   masterNotice('Comparação concluída. Confira os resultados no popup.');
+   const snapshot={schemaVersion:2,masterEntries,file:file.name,total:masterEntries.length};
+   const {error}=await db.from('spobras_lista_mestra_historico').insert({obra_id:obra,arquivo_nome:file.name,importado_por:currentUser.id,dados:snapshot});
+   if(error)throw Error('Não foi possível salvar a Lista Mestra: '+error.message);
+   input.value='';
+   masterNotice('Lista Mestra cadastrada com '+masterEntries.length+' projetos. Clique em "Status de Projetos" para analisar os projetos atuais.');
   }catch(e){masterNotice('Lista Mestra não importada: '+e.message,true);}
-  finally{masterBusy=false;btn.disabled=false;btn.textContent='↑ Importar e comparar Lista Mestra';}
+  finally{masterBusy=false;btn.disabled=false;btn.textContent='↑ Importar Lista Mestra';}
  }
  async function approveMaster(){
-  if(masterBusy)return;
   masterPending=null;masterHistoryId=null;masterPopup(false);
  }
+ el('sp-last-master')?.addEventListener('click',currentMasterStatus);
+ el('sp-master-import')?.addEventListener('click',importMaster);
+ el('sp-master-ok')?.addEventListener('click',approveMaster);
+ el('sp-master-download')?.addEventListener('click',downloadMasterReport);
+ el('sp-manager-report')?.addEventListener('click',managerPdf);
 
 })();
