@@ -120,7 +120,16 @@
    if(!current||current.storage_path!==target.storage_path||current.nome_arquivo!==target.nome_arquivo)throw Error('O projeto foi alterado ou não existe mais. Atualize a biblioteca.');
    const {data:storageRemoved,error:storageError}=await db.storage.from(BUCKET).remove([current.storage_path]);
    if(storageError)throw Error('Não foi possível excluir o arquivo do armazenamento: '+storageError.message);
-   if(!storageRemoved?.length)throw Error('A remoção do arquivo no armazenamento não foi confirmada.');
+   // A exclusão pode retornar lista vazia quando o objeto já não existe.
+   // Nesse caso, confirme a ausência antes de remover o cadastro.
+   if(!storageRemoved?.length){
+    const {data:storageInfo,error:infoError}=await db.storage.from(BUCKET).info(current.storage_path);
+    const status=Number(infoError?.statusCode??infoError?.status??0);
+    const isNotFound=status===404;
+    if(storageInfo||!isNotFound){
+     throw Error('A remoção do arquivo no armazenamento não foi confirmada. '+(infoError?.message||'Verifique o arquivo e tente novamente.'));
+    }
+   }
    const {data:deleted,error:dbError}=await db.from('projetos_spobras').delete().eq('obra_id',target.obra_id).eq('id',target.id).eq('storage_path',current.storage_path).select('id');
    if(dbError)throw Error('Arquivo removido do armazenamento, mas o banco não confirmou a exclusão: '+dbError.message);
    if(deleted?.length!==1)throw Error('Arquivo removido do armazenamento, mas o registro não foi excluído. Contate o administrador.');
