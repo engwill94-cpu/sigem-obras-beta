@@ -507,6 +507,10 @@ function switchWorkTab(tab) {
   const isProjects=!!projectSection;
   const isMeasurements=tab==='measurements'||tab.startsWith('measurement-');
   const isLibrary=isDocs||isProjects||isMeasurements;
+  const isManagement=tab==='management-measurements';
+  $('management-menu-toggle').classList.toggle('active',isManagement);
+  if(isManagement)$('management-submenu').classList.remove('hidden');
+  $('management-menu-toggle').setAttribute('aria-expanded',String(!$('management-submenu').classList.contains('hidden')));
   $('libraries-menu-toggle').classList.toggle('active',isLibrary);
   if(isLibrary)$('libraries-submenu').classList.remove('hidden');
   $('libraries-menu-toggle').setAttribute('aria-expanded',String(!$('libraries-submenu').classList.contains('hidden')));
@@ -517,11 +521,11 @@ function switchWorkTab(tab) {
     );
   });
 
-  for (const id of ['overview', 'contracts', 'documents', 'projects', 'measurements', 'addendums', 'shelves', 'criteria', 'indexation', 'coming']) {
+  for (const id of ['overview', 'contracts', 'documents', 'projects', 'measurements', 'addendums', 'shelves', 'criteria', 'indexation', 'management-measurements', 'coming']) {
     $('work-tab-' + id).classList.add('hidden');
   }
 
-  if (tab === 'overview' || tab === 'contracts' || tab === 'measurements' || tab === 'measurement-amendment' || tab === 'measurement-shelves' || tab === 'measurement-criteria' || tab==='indexation' || isDocs || isProjects) {
+  if (tab === 'overview' || tab === 'contracts' || tab === 'measurements' || tab === 'measurement-amendment' || tab === 'measurement-shelves' || tab === 'measurement-criteria' || tab==='indexation' || isManagement || isDocs || isProjects) {
     $('work-tab-' + (isDocs?'documents':isProjects?'projects':tab==='measurement-amendment'?'addendums':tab==='measurement-shelves'?'shelves':tab==='measurement-criteria'?'criteria':tab)).classList.remove('hidden');
     if(isProjects){$('projects-section-title').textContent=projectNames[projectSection];$('projects-section-description').textContent=projectSection==='spobras'?'Organize, consulte e acompanhe os projetos técnicos da obra por disciplina.':'Área de projetos da obra selecionada. O cadastro de arquivos será configurado em uma próxima etapa.';document.querySelector('.sigem-projects').classList.toggle('sp-other-area',projectSection!=='spobras');if(projectSection==='spobras'&&typeof window.spobrasLoad==='function')window.spobrasLoad();}
     if (isDocs && typeof docsSelectSection==='function') docsSelectSection(docsSection);
@@ -546,6 +550,11 @@ function switchWorkTab(tab) {
     behavior: 'smooth'
   });
 }
+
+$('management-menu-toggle').addEventListener('click',()=>{const menu=$('management-submenu');const open=!menu.classList.toggle('hidden');$('management-menu-toggle').setAttribute('aria-expanded',String(open));});
+
+$('analysis-search-form').addEventListener('submit',event=>{event.preventDefault();const term=$('analysis-search-query').value.trim();$('analysis-search-status').textContent=term?'Pesquisa por "'+term+'" ainda não habilitada. Na próxima etapa, conectaremos as planilhas cadastradas e a indexação.':'Digite um termo para pesquisar nas planilhas cadastradas.';$('analysis-results-count').textContent='0 resultados';$('analysis-results').textContent='A busca ainda não foi configurada. Nenhum resultado foi consultado.';});
+$('analysis-search-clear').addEventListener('click',()=>{$('analysis-search-query').value='';$('analysis-search-status').textContent='A pesquisa no conteúdo das planilhas será conectada na próxima etapa de configuração.';$('analysis-results-count').textContent='0 resultados';$('analysis-results').textContent='Os resultados encontrados nas planilhas aparecerão aqui após a integração da pesquisa.';});
 
 $('libraries-menu-toggle').addEventListener('click',()=>{const menu=$('libraries-submenu');const open=!menu.classList.toggle('hidden');$('libraries-menu-toggle').setAttribute('aria-expanded',String(open));});
 
