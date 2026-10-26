@@ -164,3 +164,6 @@ body.inside-mode .app-shell>.sidebar{display:none}body.inside-mode .main-area{wi
 #sp-delete-confirm{background:#bd2922;color:#fff}
 #sp-delete-confirm:hover{background:#9e201b}
 .sp-delete-actions button:disabled{opacity:.55;cursor:wait}
+
+/* Gerenciamento > Análise de medições */
+.analysis-search-form label{margin:0 0 10px}.analysis-search-row{display:flex;gap:10px;align-items:stretch}.analysis-search-row input{flex:1;min-width:0}.analysis-search-row button{white-space:nowrap}.analysis-results-card{min-height:350px}.analysis-results-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.analysis-results-heading h3{margin:0}.analysis-results-heading span{font-size:12px;color:#607b90}.analysis-results{min-height:260px;max-height:570px;overflow:auto;background:#f8fbfe;border:1px solid #dce7f1;border-radius:10px;padding:18px}.analysis-empty{color:#6b8094;text-align:center;padding:72px 16px;font-size:13px}@media(max-width:700px){.analysis-search-row{flex-wrap:wrap}.analysis-search-row input{flex-basis:100%}.analysis-search-row button{flex:1}}
